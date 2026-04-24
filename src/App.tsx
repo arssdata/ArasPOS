@@ -11,6 +11,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { View, Product, Sale, CartItem, ShopInfo, Preorder, Milestone, PreorderItem, ActiveOrder, OrderStatus } from './types';
 import { formatCurrency, generateId, generateOrderCode, cn } from './lib/utils';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import { format, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths, addMonths, isSameMonth, subDays, addDays, startOfDay, endOfDay, isWithinInterval, startOfWeek, endOfWeek, eachDayOfInterval, eachWeekOfInterval, isSameWeek, addWeeks, subWeeks } from 'date-fns';
 
 // --- MOCK DATA ---
@@ -27,6 +29,61 @@ export default function App() {
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
   const [sales, setSales] = useState<Sale[]>([]);
   const [preorders, setPreorders] = useState<Preorder[]>([]);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const downloadAsJPG = async (elementId: string, fileName: string) => {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+    
+    setIsDownloading(true);
+    try {
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+      const link = document.createElement('a');
+      link.download = `${fileName}.jpg`;
+      link.href = dataUrl;
+      link.click();
+    } catch (error) {
+      console.error('Download failed:', error);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const downloadAsPDF = async (elementId: string, fileName: string) => {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+
+    setIsDownloading(true);
+    try {
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+      const imgProps = pdf.getImageProperties(imgData);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`${fileName}.pdf`);
+    } catch (error) {
+      console.error('PDF generation failed:', error);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
   const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
   const [shopInfo, setShopInfo] = useState<ShopInfo>({
     name: 'Warung Berkah UMKM',
@@ -383,7 +440,7 @@ export default function App() {
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex flex-shrink-0 items-center justify-center text-white font-bold">
             {shopInfo.name.charAt(0)}
           </div>
-          {isSidebarOpen && <span className="font-bold text-lg tracking-tight leading-tight whitespace-normal break-words">{shopInfo.name} POS</span>}
+          {isSidebarOpen && <span className="font-bold text-lg tracking-tight leading-tight whitespace-normal break-words">{shopInfo.name}</span>}
         </div>
 
         <nav className="flex-1 px-3 space-y-1">
@@ -537,13 +594,21 @@ export default function App() {
                   shopInfo={shopInfo}
                   tab={onlineTab}
                   setTab={setOnlineTab}
+                  downloadAsJPG={downloadAsJPG}
+                  downloadAsPDF={downloadAsPDF}
+                  isDownloading={isDownloading}
                 />
               )}
               {view === 'dashboard' && (
                 <DashboardView sales={sales} products={products} />
               )}
               {view === 'history' && (
-                <HistoryView sales={sales} shopInfo={shopInfo} />
+                <HistoryView 
+                  sales={sales} 
+                  shopInfo={shopInfo} 
+                  downloadAsJPG={downloadAsJPG}
+                  isDownloading={isDownloading}
+                />
               )}
               {view === 'settings' && (
                 <SettingsView 
@@ -762,7 +827,7 @@ function POSView({ products, setProducts, cart, setCart, sales, setSales, preord
       {/* Search and Title Row */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 rounded-2xl border border-zinc-100 shadow-sm">
         <h2 className="text-xl md:text-2xl font-black italic tracking-tighter text-blue-600 whitespace-normal leading-tight">
-          {shopInfo.name} POS
+          {shopInfo.name} Order
         </h2>
         <div className="relative w-full sm:w-64 md:w-80">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" />
@@ -1068,7 +1133,7 @@ function POSView({ products, setProducts, cart, setCart, sales, setSales, preord
         </div>
       )}
 
-      {/* Order List / Bill Modal for Kitchen */}
+      {/* Order List / Bill Modal for Dine In / Take Away / Online */}
       {showOrderList && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-2 sm:p-4 backdrop-blur-sm overflow-y-auto">
           <motion.div 
@@ -1079,7 +1144,7 @@ function POSView({ products, setProducts, cart, setCart, sales, setSales, preord
             <button onClick={() => setShowOrderList(null)} className="absolute top-2 sm:top-4 right-2 sm:right-4 text-zinc-400 hover:text-zinc-600 no-print cursor-pointer"><X /></button>
             <div id="bill-ticket" className="bg-white p-4 sm:p-6 border-2 border-dashed border-zinc-200 font-mono text-xs sm:text-sm space-y-4">
               <div className="text-center border-b pb-4">
-                <h3 className="font-black text-xl uppercase italic tracking-tighter">Kitchen Ticket</h3>
+                <h3 className="font-black text-xl uppercase italic tracking-tighter">Order Ticket</h3>
                 <p className="text-[10px] text-zinc-400 uppercase mt-1">{format(new Date(), 'dd/MM/yy HH:mm')}</p>
               </div>
 
@@ -1119,7 +1184,7 @@ function POSView({ products, setProducts, cart, setCart, sales, setSales, preord
               onClick={() => window.print()} 
               className="w-full mt-6 btn btn-primary py-3 no-print flex items-center justify-center gap-2 font-bold shadow-lg"
             >
-              <Printer className="w-5 h-5" /> Cetak Ticket Kitchen
+              <Printer className="w-5 h-5" /> Cetak Ticket Order
             </button>
           </motion.div>
         </div>
@@ -1849,7 +1914,7 @@ function DashboardView({ sales, products }: any) {
   );
 }
 
-function HistoryView({ sales, shopInfo }: any) {
+function HistoryView({ sales, shopInfo, downloadAsJPG, isDownloading }: any) {
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [timeWindow, setTimeWindow] = useState<'today' | 'week' | 'month' | 'all'>('month');
@@ -2099,12 +2164,21 @@ function HistoryView({ sales, shopInfo }: any) {
               </div>
             </div>
 
-            <button 
-              onClick={() => window.print()}
-              className="w-full mt-6 btn btn-primary py-3 no-print font-bold shadow-lg"
-            >
-              Cetak Struk
-            </button>
+            <div className="flex gap-2 mt-6 no-print">
+              <button 
+                onClick={() => window.print()}
+                className="flex-1 btn btn-primary py-3 font-bold shadow-lg"
+              >
+                <Printer className="w-4 h-4 mr-2" /> Print
+              </button>
+              <button 
+                onClick={() => downloadAsJPG('receipt', `Receipt_${selectedSale.id}`)}
+                disabled={isDownloading}
+                className="flex-1 btn bg-green-600 text-white py-3 font-bold shadow-lg hover:bg-green-700 disabled:bg-zinc-400 flex items-center justify-center gap-2"
+              >
+                {isDownloading ? <Clock className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} JPG (WA)
+              </button>
+            </div>
           </motion.div>
         </div>
       )}
@@ -2112,13 +2186,14 @@ function HistoryView({ sales, shopInfo }: any) {
   );
 }
 
-function OnlineView({ preorders, setPreorders, sales, products, setProducts, setSales, shopInfo, tab, setTab }: any) {
+function OnlineView({ preorders, setPreorders, sales, products, setProducts, setSales, shopInfo, tab, setTab, downloadAsJPG, downloadAsPDF, isDownloading }: any) {
   const [bulkText, setBulkText] = useState('');
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [showSummary, setShowSummary] = useState(false);
   const [showLabels, setShowLabels] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [selectedOrderForReceipt, setSelectedOrderForReceipt] = useState<Preorder | null>(null);
   const [isCheckingAvi, setIsCheckingAvi] = useState(false);
   const [aviReadyOrders, setAviReadyOrders] = useState<string[]>([]);
   const [orderToCancel, setOrderToCancel] = useState<string | null>(null);
@@ -2418,54 +2493,27 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
   };
 
   const sendWhatsAppReceipt = (order: Preorder) => {
-    const itemsText = order.items.map(item => `- ${item.name} (x${item.quantity})`).join('\n');
     const subtotal = order.total;
     const finalTotal = subtotal + order.shippingCost;
-    
-    // Bank accounts text
     const bankText = shopInfo.bankAccounts && shopInfo.bankAccounts.length > 0 
       ? shopInfo.bankAccounts.map((b: any) => `${b.bankName}: ${b.accountNumber} (A/N ${b.accountName || '-'})`).join('\n')
       : '[MENUNGGU REKENING TOKO]';
 
-    // Generate Direct Image Download Link for WA
-    // For local hosting, we can try to point to the base64 or a link 
-    // that triggers the specific view but we want them "downloadable".
-    // On web, direct download trigger via WA link is hard, 
-    // but we can provide a landing page that is extremely clear.
-    
-    // Use btoa + utf8 support for encoding
-    const receiptPayload = {
-      shopName: shopInfo.name,
-      shopAddress: shopInfo.address,
-      shopPhone: shopInfo.phone,
-      orderId: order.id,
-      date: format(new Date(order.date), 'dd/MM/yy HH:mm'),
-      items: order.items.map(i => ({ name: i.name, qty: i.quantity, price: i.price })),
-      subtotal: order.total,
-      shippingCost: order.shippingCost,
-      deliveryMode: order.deliveryMode,
-      total: order.total + order.shippingCost,
-      message: shopInfo.message
-    };
-    const encodedData = btoa(unescape(encodeURIComponent(JSON.stringify(receiptPayload))));
-    const receiptLink = `${window.location.origin}/#receipt/${encodedData}`;
-    const qrisLink = `${window.location.origin}/#qris`;
-
-    const message = `*${shopInfo.name.toUpperCase()} - Invoice No: ${order.id}*\n\n` +
-      `Halo Kak ${order.customerName}, Berikut rincian pesanan Anda:\n` +
-      `${itemsText}\n\n` +
-      `Subtotal: ${formatCurrency(subtotal)}\n\n` +
+    const text = `*STRUK BELANJA - ${shopInfo.name}*\n` +
+      `No: ${order.id}\n` +
+      `Tgl: ${format(new Date(order.date), 'dd/MM/yy HH:mm')}\n` +
+      `CP: ${shopInfo.phone}\n` +
+      `--------------------------\n` +
+      `${order.items.map(i => `${i.name} (x${i.quantity}) - ${formatCurrency(i.price * i.quantity)}`).join('\n')}\n` +
+      `--------------------------\n` +
+      `Subtotal: ${formatCurrency(subtotal)}\n` +
       `Ongkir (${order.deliveryMode}): ${formatCurrency(order.shippingCost)}\n` +
-      `*Total Tagihan: ${formatCurrency(finalTotal)}*\n\n` +
-      `--------------------------------\n` +
-      `Selesaikan pembayaran ke:\n${bankText}\n` +
-      `--------------------------------\n\n` +
-      `DOWNLOAD STRUK DIGITAL:\n${receiptLink}\n\n` +
-      `DOWNLOAD QRIS PEMBAYARAN:\n${qrisLink}\n\n` +
+      `*TOTAL: ${formatCurrency(finalTotal)}*\n\n` +
+      `*PEMBAYARAN KE:*\n${bankText}\n\n` +
       `${shopInfo.message}`;
-      
-    const encoded = encodeURIComponent(message);
-    window.open(`https://wa.me/?text=${encoded}`, '_blank');
+
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(whatsappUrl, '_blank');
   };
 
   const toggleSelect = (id: string) => {
@@ -2498,8 +2546,8 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
   return (
     <div className="space-y-4 md:space-y-6 lg:pb-10">
       <div className="sticky top-0 z-30 bg-zinc-50 pt-1 -mt-1 space-y-4 md:space-y-6 no-print">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="relative flex-1">
+        <div className="flex flex-col md:flex-row gap-4 items-center">
+          <div className="relative flex-1 w-full">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
             <input 
               type="text"
@@ -2508,10 +2556,6 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-3 bg-white border border-zinc-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none shadow-sm"
             />
-          </div>
-          <div className="flex bg-zinc-200 p-1 rounded-xl w-fit">
-            <button onClick={() => setTab('kanban')} className={cn("px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all", tab === 'kanban' ? "bg-white text-blue-600 shadow-sm" : "text-zinc-600 hover:text-zinc-800")}>Kanban</button>
-            <button onClick={() => setTab('input')} className={cn("px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all", tab === 'input' ? "bg-white text-blue-600 shadow-sm" : "text-zinc-600 hover:text-zinc-800")}>Input Pesanan</button>
           </div>
         </div>
 
@@ -2752,12 +2796,21 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
                         )}
 
                         {order.milestone === 'pengiriman' && (
-                          <button 
-                            onClick={() => sendWhatsAppReceipt(order)}
-                            className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-green-50 text-green-700 rounded-lg text-[10px] font-bold border border-green-100 hover:bg-green-100 transition-colors"
-                          >
-                            <ShoppingCart className="w-3.5 h-3.5" /> Kirim Struk WA
-                          </button>
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => sendWhatsAppReceipt(order)}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-green-50 text-green-700 rounded-lg text-[10px] font-bold border border-green-100 hover:bg-green-100 transition-colors"
+                            >
+                              <ShoppingCart className="w-3.5 h-3.5" /> WA
+                            </button>
+                            <button 
+                              onClick={() => setSelectedOrderForReceipt(order)}
+                              className="px-3 flex items-center justify-center bg-blue-50 text-blue-700 rounded-lg border border-blue-100 hover:bg-blue-100"
+                              title="Download JPG"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         )}
                       </div>
                     </motion.div>
@@ -2791,7 +2844,12 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
       {/* Summary Modal (A4 Print Version) */}
       {showSummary && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-start justify-center p-2 sm:p-8 backdrop-blur-sm overflow-auto">
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded p-4 sm:p-12 w-full max-w-[210mm] min-h-[297mm] relative font-sans text-zinc-900 border border-zinc-200 mt-4 sm:mt-0 shadow-2xl print:shadow-none print:border-none print:m-0 print:p-8 print:w-full">
+          <motion.div 
+            id="summary-print-area"
+            initial={{ scale: 0.9, opacity: 0 }} 
+            animate={{ scale: 1, opacity: 1 }} 
+            className="bg-white rounded p-4 sm:p-12 w-full max-w-[210mm] min-h-[297mm] relative font-sans text-zinc-900 border border-zinc-200 mt-4 sm:mt-0 shadow-2xl print:shadow-none print:border-none print:m-0 print:p-8 print:w-full"
+          >
             <button onClick={() => setShowSummary(false)} className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600 no-print"><X /></button>
             <div className="space-y-8">
               <div className="text-center border-b-2 border-zinc-900 pb-8 mt-4">
@@ -2865,7 +2923,21 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
                 </div>
               </div>
             </div>
-            <button onClick={() => window.print()} className="fixed bottom-8 right-8 btn btn-primary px-10 py-4 shadow-2xl no-print font-black uppercase tracking-widest text-sm z-[110]">PRINT SUMMARY (A4)</button>
+            <div className="fixed bottom-8 right-8 flex flex-col gap-3 no-print z-[110]">
+              <button 
+                onClick={() => window.print()} 
+                className="btn btn-primary px-10 py-4 shadow-2xl font-black uppercase tracking-widest text-sm"
+              >
+                <Printer className="w-4 h-4 mr-2" /> PRINT (Browser)
+              </button>
+              <button 
+                onClick={() => downloadAsPDF('summary-print-area', `Summary_Produksi_${format(new Date(), 'ddMMyy')}`)}
+                disabled={isDownloading}
+                className="btn bg-red-600 text-white px-10 py-4 shadow-2xl font-black uppercase tracking-widest text-sm flex items-center justify-center gap-2 hover:bg-red-700 disabled:bg-zinc-400"
+              >
+                {isDownloading ? <Clock className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} DOWNLOAD PDF
+              </button>
+            </div>
           </motion.div>
         </div>
       )}
@@ -2873,7 +2945,12 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
       {/* Label Print Modal (Page Logic) */}
       {showLabels && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-start justify-center p-2 sm:p-8 backdrop-blur-sm overflow-auto">
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded p-4 sm:p-12 w-full max-w-4xl relative print:m-0 print:p-0 print:w-full print:shadow-none shadow-2xl">
+          <motion.div 
+            id="labels-print-area"
+            initial={{ scale: 0.9, opacity: 0 }} 
+            animate={{ scale: 1, opacity: 1 }} 
+            className="bg-white rounded p-4 sm:p-12 w-full max-w-4xl relative print:m-0 print:p-0 print:w-full print:shadow-none shadow-2xl"
+          >
             <button onClick={() => setShowLabels(false)} className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600 no-print cursor-pointer scale-150 sm:scale-100"><X /></button>
             <h3 className="text-center font-black uppercase tracking-widest mb-8 no-print text-zinc-400">Preview Label CO</h3>
             
@@ -2922,7 +2999,81 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
                 </div>
               ))}
             </div>
-            <button onClick={() => window.print()} className="mt-8 btn btn-primary w-full no-print py-4 font-black uppercase tracking-widest shadow-2xl">CETAK SEMUA LABEL</button>
+            <div className="fixed bottom-8 right-8 flex flex-col gap-3 no-print z-[110]">
+              <button 
+                onClick={() => window.print()} 
+                className="btn btn-primary px-10 py-4 shadow-2xl font-black uppercase tracking-widest text-sm"
+              >
+                <Printer className="w-4 h-4 mr-2" /> PRINT (Browser)
+              </button>
+              <button 
+                onClick={() => downloadAsPDF('labels-print-area', `Labels_${format(new Date(), 'ddMMyy')}`)}
+                disabled={isDownloading}
+                className="btn bg-red-600 text-white px-10 py-4 shadow-2xl font-black uppercase tracking-widest text-sm flex items-center justify-center gap-2 hover:bg-red-700 disabled:bg-zinc-400"
+              >
+                {isDownloading ? <Clock className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} DOWNLOAD PDF
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Receipt Download Modal for Online */}
+      {selectedOrderForReceipt && (
+        <div className="fixed inset-0 bg-black/50 z-[120] flex items-center justify-center p-4 backdrop-blur-sm">
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-zinc-100 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative">
+            <button onClick={() => setSelectedOrderForReceipt(null)} className="absolute top-4 right-4 text-zinc-400 no-print cursor-pointer hover:text-zinc-600 transition-colors"><X /></button>
+            <div id="online-receipt" className="bg-white p-6 rounded shadow-sm border font-mono text-sm space-y-4">
+              <div className="text-center border-b pb-4 space-y-1">
+                <h3 className="font-bold text-lg uppercase tracking-tight">{shopInfo.name}</h3>
+                <p className="text-[10px] text-zinc-500 leading-relaxed">{shopInfo.address}</p>
+                <p className="text-[10px] text-zinc-500">{shopInfo.phone}</p>
+              </div>
+              <div className="text-[10px] space-y-0.5 py-1 border-b italic">
+                <div className="flex justify-between">
+                  <span>ORDER ID:</span>
+                  <span>{selectedOrderForReceipt.id}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>TGL:</span>
+                  <span>{format(new Date(selectedOrderForReceipt.date), 'dd/MM/yy HH:mm')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>CUST:</span>
+                  <span>{selectedOrderForReceipt.customerName}</span>
+                </div>
+              </div>
+              <div className="space-y-1.5 py-2 border-b">
+                {selectedOrderForReceipt.items.map((item: any, i: number) => (
+                  <div key={i} className="flex justify-between text-[10px]">
+                    <span className="truncate max-w-[150px] uppercase">{item.name} x{item.quantity}</span>
+                    <span className="font-bold">{formatCurrency(item.price * item.quantity)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="pt-2 space-y-1 text-xs">
+                <div className="flex justify-between font-black text-sm">
+                  <span>TOTAL</span>
+                  <span>{formatCurrency(selectedOrderForReceipt.total + selectedOrderForReceipt.shippingCost)}</span>
+                </div>
+                {selectedOrderForReceipt.shippingCost > 0 && (
+                  <div className="flex justify-between text-[10px] text-zinc-500">
+                    <span>ONGKIR ({selectedOrderForReceipt.deliveryMode})</span>
+                    <span>{formatCurrency(selectedOrderForReceipt.shippingCost)}</span>
+                  </div>
+                )}
+              </div>
+              <div className="pt-4 border-t text-center text-zinc-400 text-[10px] italic leading-tight">
+                <p>{shopInfo.message}</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => downloadAsJPG('online-receipt', `Receipt_${selectedOrderForReceipt.id}`)}
+              disabled={isDownloading}
+              className="w-full mt-6 btn bg-green-600 text-white py-4 font-black tracking-widest text-xs uppercase shadow-xl hover:bg-green-700 disabled:bg-zinc-300 flex items-center justify-center gap-2 transition-all"
+            >
+              {isDownloading ? <Clock className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} DOWNLOAD JPG (WA)
+            </button>
           </motion.div>
         </div>
       )}
@@ -3234,7 +3385,7 @@ function SettingsView({ shopInfo, setShopInfo, onResetData }: { shopInfo: ShopIn
           Hapus & Reset Database
         </h3>
         <p className="text-sm text-red-600 opacity-80 leading-relaxed font-bold">
-          Tindakan ini akan menghapus SELURUH data (Produk, Penjualan, Online Order, Kitchen, Dashboard) dan mengembalikan ke pengaturan awal!
+          Tindakan ini akan menghapus SELURUH data (Produk, Penjualan, Online Order, Order Monitor, Dashboard) dan mengembalikan ke pengaturan awal!
         </p>
         
         <div className="space-y-4">
