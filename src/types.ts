@@ -53,6 +53,7 @@ export interface ShopInfo {
   message: string;
   qrisImage?: string;
   bankAccounts: BankAccount[];
+  systemPin?: string;
 }
 
 export type Milestone = 'produksi' | 'penyimpanan' | 'pengiriman';

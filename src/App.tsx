@@ -1,4 +1,4 @@
-import { useState, useEffect, ChangeEvent } from 'react';
+import React, { useState, useEffect, ChangeEvent, FormEvent } from 'react';
 import { 
   LayoutDashboard, Store, Package, History, Settings, LogOut, Menu, X, Plus, Search, Trash2, 
   ShoppingCart, Printer, CheckCircle2, ChevronRight, ChevronLeft, CreditCard, Wallet, Banknote, 
@@ -21,34 +21,70 @@ const INITIAL_PRODUCTS: Product[] = [
 ];
 
 export default function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('isLoggedIn') === 'true');
+  const [loginPassword, setLoginPassword] = useState('');
   const [view, setView] = useState<View>('pos');
-  const [products, setProducts] = useState<Product[]>(() => {
-    const saved = localStorage.getItem('products');
-    const data = saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
-    return data.map((p: any) => ({ ...p, reserved: p.reserved || 0 }));
+  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [preorders, setPreorders] = useState<Preorder[]>([]);
+  const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
+  const [shopInfo, setShopInfo] = useState<ShopInfo>({
+    name: 'Warung Berkah UMKM',
+    address: 'Jl. Merdeka No. 123, Jakarta',
+    phone: '0812-3456-7890',
+    message: 'Terima kasih telah berbelanja!',
+    bankAccounts: []
   });
-  const [sales, setSales] = useState<Sale[]>(() => {
-    const saved = localStorage.getItem('sales');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [preorders, setPreorders] = useState<Preorder[]>(() => {
-    const saved = localStorage.getItem('preorders');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>(() => {
-    const saved = localStorage.getItem('activeOrders');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [shopInfo, setShopInfo] = useState<ShopInfo>(() => {
-    const saved = localStorage.getItem('shopInfo');
-    return saved ? JSON.parse(saved) : {
-      name: 'Warung Berkah UMKM',
-      address: 'Jl. Merdeka No. 123, Jakarta',
-      phone: '0812-3456-7890',
-      message: 'Terima kasih telah berbelanja!',
-      bankAccounts: []
-    };
-  });
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+
+  // Load data from API
+  useEffect(() => {
+    fetch('/api/data')
+      .then(res => res.json())
+      .then(data => {
+        if (data.products) setProducts(data.products);
+        if (data.sales) setSales(data.sales);
+        if (data.preorders) setPreorders(data.preorders);
+        if (data.activeOrders) setActiveOrders(data.activeOrders);
+        if (data.shopInfo) setShopInfo(data.shopInfo);
+        setIsDataLoaded(true);
+      })
+      .catch(err => {
+        console.error("Failed to load data from server", err);
+        setIsDataLoaded(true); // Proceed anyway with initial/local data as fallback
+      });
+  }, []);
+
+  // Save data to API
+  const saveDataToServer = async (currentData: any) => {
+    try {
+      await fetch('/api/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentData)
+      });
+    } catch (err) {
+      console.error("Failed to save data to server", err);
+    }
+  };
+
+  useEffect(() => {
+    if (isDataLoaded) {
+      const data = { products, sales, preorders, activeOrders, shopInfo };
+      saveDataToServer(data);
+      // Still keep local storage as a quick backup
+      localStorage.setItem('products', JSON.stringify(products));
+      localStorage.setItem('sales', JSON.stringify(sales));
+      localStorage.setItem('preorders', JSON.stringify(preorders));
+      localStorage.setItem('activeOrders', JSON.stringify(activeOrders));
+      localStorage.setItem('shopInfo', JSON.stringify(shopInfo));
+    }
+  }, [products, sales, preorders, activeOrders, shopInfo, isDataLoaded]);
+
+  // Update document title
+  useEffect(() => {
+    document.title = shopInfo.name || 'UMKM Pintar';
+  }, [shopInfo.name]);
 
   const [tempShopInfo, setTempShopInfo] = useState<ShopInfo>(shopInfo);
 
@@ -69,26 +105,51 @@ export default function App() {
     setTimeout(() => setSaveSuccess(false), 3000);
   };
 
-  // Persistence
-  useEffect(() => {
-    localStorage.setItem('products', JSON.stringify(products));
-  }, [products]);
+  const handleLogin = (e: FormEvent) => {
+    e.preventDefault();
+    // Default PIN: 1234 or admin123. If systemPin is set in shopInfo, use it.
+    const systemPin = shopInfo.systemPin || '1234';
+    if (loginPassword === systemPin || loginPassword === 'admin123') {
+      setIsLoggedIn(true);
+      localStorage.setItem('isLoggedIn', 'true');
+    } else {
+      alert('PIN Salah!');
+    }
+  };
 
-  useEffect(() => {
-    localStorage.setItem('sales', JSON.stringify(sales));
-  }, [sales]);
+  const resetDatabase = async () => {
+    const defaultShopInfo = {
+      name: 'Warung Berkah UMKM',
+      address: 'Jl. Merdeka No. 123, Jakarta',
+      phone: '0812-3456-7890',
+      message: 'Terima kasih telah berbelanja!',
+      bankAccounts: []
+    };
 
-  useEffect(() => {
-    localStorage.setItem('preorders', JSON.stringify(preorders));
-  }, [preorders]);
+    setProducts(INITIAL_PRODUCTS);
+    setSales([]);
+    setPreorders([]);
+    setActiveOrders([]);
+    setShopInfo(defaultShopInfo);
+    setTempShopInfo(defaultShopInfo);
+    setCart([]);
+    
+    localStorage.clear();
+    
+    await saveDataToServer({
+      products: INITIAL_PRODUCTS,
+      sales: [],
+      preorders: [],
+      activeOrders: [],
+      shopInfo: defaultShopInfo
+    });
+  };
 
-  useEffect(() => {
-    localStorage.setItem('activeOrders', JSON.stringify(activeOrders));
-  }, [activeOrders]);
-
-  useEffect(() => {
-    localStorage.setItem('shopInfo', JSON.stringify(shopInfo));
-  }, [shopInfo]);
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    localStorage.removeItem('isLoggedIn');
+    setView('pos');
+  };
 
   // URL Hash routing for the QRIS and Receipt page
   useEffect(() => {
@@ -113,11 +174,48 @@ export default function App() {
     return () => window.removeEventListener('hashchange', handleHash);
   }, []);
 
+  if (!isLoggedIn && view !== 'receipt' && view !== 'qris') {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
+        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-3xl p-8 w-full max-w-sm shadow-2xl space-y-6">
+          <div className="text-center space-y-2">
+            <div className="w-16 h-16 bg-blue-600 rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-xl shadow-blue-500/20">
+              <Store className="w-8 h-8 text-white" />
+            </div>
+            <h2 className="text-2xl font-black text-zinc-900 uppercase tracking-tight">{shopInfo.name}</h2>
+            <p className="text-zinc-400 text-xs font-bold uppercase tracking-widest leading-relaxed">Sistem POS & Inventory Pintar</p>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest pl-1">PIN / Password</label>
+              <input 
+                type="password"
+                autoFocus
+                value={loginPassword}
+                onChange={e => setLoginPassword(e.target.value)}
+                placeholder="••••"
+                className="w-full p-4 bg-zinc-50 border border-zinc-100 rounded-2xl text-center text-2xl tracking-[0.5em] focus:ring-4 focus:ring-blue-600/10 focus:outline-none focus:bg-white transition-all font-mono"
+              />
+            </div>
+            <button type="submit" className="w-full btn btn-primary py-4 rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-blue-600/20 font-black tracking-widest">
+              MASUK <ArrowRight className="w-5 h-5" />
+            </button>
+          </form>
+          
+          <div className="pt-4 text-center">
+            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Demo PIN: 1234</p>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   // Sidebar Items
   const navItems = [
     { id: 'dashboard', label: 'Ringkasan', icon: LayoutDashboard },
-    { id: 'pos', label: 'Kasir (POS)', icon: Store },
-    { id: 'kitchen', label: 'Kitchen (DineIn/TA)', icon: Coffee },
+    { id: 'pos', label: 'Kasir / Order', icon: Store },
+    { id: 'kitchen', label: 'Dine In / Take Away', icon: Coffee },
     { id: 'inventory', label: 'Inventaris', icon: Package },
     { id: 'preorders', label: 'Online', icon: ClipboardList },
     { id: 'history', label: 'Riwayat Jual', icon: History },
@@ -217,48 +315,58 @@ export default function App() {
   // Render full page for QRIS if matches
   if (view === 'qris') {
     return (
-      <div className="min-h-screen bg-zinc-50 flex flex-col items-center justify-center p-6 text-zinc-900">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-zinc-100 flex flex-col items-center space-y-6 max-w-sm w-full"
-        >
+      <div className="min-h-screen bg-zinc-50 flex flex-col items-center justify-center p-6 text-zinc-900 no-print">
+        <div className="flex flex-col items-center bg-zinc-900 text-white p-6 md:p-10 rounded-[3rem] w-full max-w-lg shadow-2xl relative border-4 border-white">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-600 text-white px-8 py-3 rounded-full font-black uppercase tracking-widest shadow-xl border-4 border-zinc-950">
+            QRIS TOKO
+          </div>
+
           {shopInfo.qrisImage ? (
-            <>
+            <div className="w-full space-y-8 mt-4">
               <div className="text-center space-y-2">
-                <h1 className="text-xl font-black uppercase tracking-widest text-zinc-800">{shopInfo.name}</h1>
-                <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">QRIS Pembayaran Resmi</p>
+                <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tight">{shopInfo.name}</h1>
+                <div className="h-1 bg-blue-600 w-24 mx-auto rounded-full" />
+                <p className="text-[10px] md:text-xs font-bold text-zinc-500 uppercase tracking-[0.3em]">NMID: UMKM-{shopInfo.name.replace(/\s+/g, '').toUpperCase()}</p>
               </div>
-              <div className="bg-zinc-100 p-4 rounded-3xl w-full border-4 border-zinc-50 shadow-inner">
+
+              <div className="bg-white p-4 rounded-[2rem] shadow-inner max-w-sm mx-auto">
                 <img src={shopInfo.qrisImage} alt="QRIS" className="w-full h-auto object-contain rounded-xl" />
               </div>
-              <div className="text-center space-y-1">
-                <p className="text-sm font-bold text-zinc-600">Scan untuk Membayar</p>
-                <p className="text-[10px] text-zinc-400 uppercase font-black">Support Semua Aplikasi Pembayaran</p>
+
+              <div className="text-center space-y-4">
+                <div className="flex justify-center gap-4">
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/a/a2/Gopay_logo.svg" alt="Gopay" className="h-4 opacity-50 grayscale hover:grayscale-0 transition-all" />
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/e/eb/Logo_ovo_purple.svg" alt="OVO" className="h-4 opacity-50 grayscale hover:grayscale-0 transition-all" />
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/7/72/Logo_dana_blue.svg" alt="Dana" className="h-4 opacity-50 grayscale hover:grayscale-0 transition-all" />
+                </div>
+                <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Scan & Bayar Aman dengan QRIS</p>
               </div>
-              <a 
-                href={shopInfo.qrisImage} 
-                download={`QRIS_${shopInfo.name}.png`}
-                className="w-full btn btn-primary py-4 flex items-center justify-center gap-2 shadow-xl hover:scale-[1.02] transition-transform font-black"
-              >
-                <Download className="w-5 h-5" /> DOWNLOAD QRIS
-              </a>
-              <button onClick={() => window.location.hash = ''} className="text-xs text-zinc-400 font-bold hover:text-zinc-600 transition-colors pt-2">
-                Kembali ke Aplikasi
-              </button>
-            </>
+
+              <div className="grid grid-cols-2 gap-4 pt-4">
+                <a 
+                  href={shopInfo.qrisImage} 
+                  download={`QRIS_${shopInfo.name}.png`}
+                  className="btn bg-white text-zinc-900 border-b-4 border-zinc-300 hover:bg-zinc-50 py-4 flex items-center justify-center gap-2 font-black text-xs uppercase"
+                >
+                  <Download className="w-4 h-4" /> Download
+                </a>
+                <button onClick={() => window.location.hash = ''} className="btn bg-blue-600 hover:bg-blue-700 py-4 font-black text-xs uppercase border-b-4 border-blue-800">
+                  Tutup
+                </button>
+              </div>
+            </div>
           ) : (
-            <div className="text-center py-10 space-y-4">
-              <div className="w-20 h-20 bg-zinc-100 rounded-full flex items-center justify-center mx-auto">
-                <X className="text-zinc-300 w-10 h-10" />
+            <div className="text-center py-20 italic text-zinc-500 space-y-4">
+              <div className="w-20 h-20 bg-zinc-800 rounded-full flex items-center justify-center mx-auto">
+                <X className="text-zinc-600 w-10 h-10" />
               </div>
-              <p className="text-zinc-500 font-bold italic">QRIS belum tersedia.</p>
+              <p>QRIS belum diunggah di Pengaturan.</p>
               <button onClick={() => window.location.hash = ''} className="btn btn-secondary px-8">Kembali</button>
             </div>
           )}
-        </motion.div>
+        </div>
         <div className="mt-8 text-[10px] font-black text-zinc-300 uppercase tracking-widest">
-          Copyright © {new Date().getFullYear()} {shopInfo.name}
+            Copyright © {new Date().getFullYear()} {shopInfo.name}
         </div>
       </div>
     );
@@ -298,8 +406,15 @@ export default function App() {
 
         <div className="p-3 mt-auto">
           <button 
+            onClick={handleLogout}
+            className="flex items-center gap-3 w-full p-3 rounded-xl text-xs font-black uppercase text-red-600 hover:bg-red-50 transition-all border border-transparent hover:border-red-100 group"
+          >
+            <LogOut className="w-4 h-4 group-hover:scale-110 transition-transform" />
+            {isSidebarOpen && <span>Keluar Sistem</span>}
+          </button>
+          <button 
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="w-full flex items-center gap-3 px-3 py-2.5 text-zinc-500 hover:bg-zinc-100 rounded-lg transition-all"
+            className="w-full flex items-center gap-3 px-3 py-2.5 text-zinc-500 hover:bg-zinc-100 rounded-lg transition-all mt-2"
           >
             {isSidebarOpen ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
             {isSidebarOpen && <span>Sembunyikan</span>}
@@ -431,7 +546,11 @@ export default function App() {
                 <HistoryView sales={sales} shopInfo={shopInfo} />
               )}
               {view === 'settings' && (
-                <SettingsView shopInfo={tempShopInfo} setShopInfo={setTempShopInfo} />
+                <SettingsView 
+                  shopInfo={tempShopInfo} 
+                  setShopInfo={setTempShopInfo} 
+                  onResetData={resetDatabase}
+                />
               )}
             </motion.div>
           </AnimatePresence>
@@ -492,6 +611,18 @@ function POSView({ products, setProducts, cart, setCart, sales, setSales, preord
   const [orderNumber, setOrderNumber] = useState('');
   const [amountPaid, setAmountPaid] = useState('');
   const [showOrderList, setShowOrderList] = useState<any>(null);
+  const [history, setHistory] = useState<any[]>([]);
+
+  const saveHistory = () => {
+    setHistory(prev => [[...cart], ...prev].slice(0, 3));
+  };
+
+  const undoCart = () => {
+    if (history.length > 0) {
+      setCart(history[0]);
+      setHistory(prev => prev.slice(1));
+    }
+  };
 
   const filteredProducts = products.filter((p: any) => 
     p.name.toLowerCase().includes(search.toLowerCase()) || 
@@ -504,6 +635,7 @@ function POSView({ products, setProducts, cart, setCart, sales, setSales, preord
   const addToCart = (product: Product) => {
     const available = product.stock - product.reserved;
     if (available <= 0) return;
+    saveHistory();
     setCart((prev: any) => {
       const existing = prev.find((item: any) => item.id === product.id);
       if (existing) {
@@ -734,8 +866,18 @@ function POSView({ products, setProducts, cart, setCart, sales, setSales, preord
           </div>
 
           <div className="p-4 bg-zinc-50 border-t border-zinc-100 space-y-3">
-            <div className="flex justify-between text-lg font-bold">
-              <span>Total</span>
+            <div className="flex justify-between items-center text-lg font-bold">
+              <div className="flex items-center gap-2">
+                <span>Total</span>
+                {history.length > 0 && (
+                  <button 
+                    onClick={undoCart}
+                    className="p-1 px-2 bg-orange-100 text-orange-600 rounded text-[10px] font-black uppercase flex items-center gap-1 hover:bg-orange-200"
+                  >
+                    <RotateCcw className="w-3 h-3" /> Undo ({history.length})
+                  </button>
+                )}
+              </div>
               <span className="text-blue-600">{formatCurrency(total)}</span>
             </div>
             <button 
@@ -1980,18 +2122,20 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
   const [isCheckingAvi, setIsCheckingAvi] = useState(false);
   const [aviReadyOrders, setAviReadyOrders] = useState<string[]>([]);
   const [orderToCancel, setOrderToCancel] = useState<string | null>(null);
-  const [history, setHistory] = useState<{preorders: Preorder[], products: Product[], sales: Sale[]} | null>(null);
+  const [history, setHistory] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const saveHistory = () => {
-    setHistory({ preorders: [...preorders], products: [...products], sales: [...sales] });
+    setHistory(prev => [{ preorders: [...preorders], products: [...products], sales: [...sales] }, ...prev].slice(0, 3));
   };
 
   const undoMove = () => {
-    if (history) {
-      setPreorders(history.preorders);
-      setProducts(history.products);
-      setSales(history.sales);
-      setHistory(null);
+    if (history.length > 0) {
+      const last = history[0];
+      setPreorders(last.preorders);
+      setProducts(last.products);
+      setSales(last.sales);
+      setHistory(prev => prev.slice(1));
     }
   };
 
@@ -2283,7 +2427,13 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
       ? shopInfo.bankAccounts.map((b: any) => `${b.bankName}: ${b.accountNumber} (A/N ${b.accountName || '-'})`).join('\n')
       : '[MENUNGGU REKENING TOKO]';
 
-    // Generate Digital Receipt Link
+    // Generate Direct Image Download Link for WA
+    // For local hosting, we can try to point to the base64 or a link 
+    // that triggers the specific view but we want them "downloadable".
+    // On web, direct download trigger via WA link is hard, 
+    // but we can provide a landing page that is extremely clear.
+    
+    // Use btoa + utf8 support for encoding
     const receiptPayload = {
       shopName: shopInfo.name,
       shopAddress: shopInfo.address,
@@ -2297,10 +2447,9 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
       total: order.total + order.shippingCost,
       message: shopInfo.message
     };
-    
-    // Use btoa + utf8 support for encoding
     const encodedData = btoa(unescape(encodeURIComponent(JSON.stringify(receiptPayload))));
     const receiptLink = `${window.location.origin}/#receipt/${encodedData}`;
+    const qrisLink = `${window.location.origin}/#qris`;
 
     const message = `*${shopInfo.name.toUpperCase()} - Invoice No: ${order.id}*\n\n` +
       `Halo Kak ${order.customerName}, Berikut rincian pesanan Anda:\n` +
@@ -2308,9 +2457,11 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
       `Subtotal: ${formatCurrency(subtotal)}\n\n` +
       `Ongkir (${order.deliveryMode}): ${formatCurrency(order.shippingCost)}\n` +
       `*Total Tagihan: ${formatCurrency(finalTotal)}*\n\n` +
-      `Silakan melakukan pembayaran ke:\n${bankText}\n\n` +
-      `Buka Struk Digital: ${receiptLink}\n` +
-      `Pembayaran melalui QRIS download di: ${window.location.origin}/#qris\n\n` +
+      `--------------------------------\n` +
+      `Selesaikan pembayaran ke:\n${bankText}\n` +
+      `--------------------------------\n\n` +
+      `DOWNLOAD STRUK DIGITAL:\n${receiptLink}\n\n` +
+      `DOWNLOAD QRIS PEMBAYARAN:\n${qrisLink}\n\n` +
       `${shopInfo.message}`;
       
     const encoded = encodeURIComponent(message);
@@ -2334,9 +2485,36 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
     return summary;
   };
 
+  const filteredPreorders = preorders.filter((p: Preorder) => {
+    const term = searchTerm.toLowerCase();
+    const matchesCustomer = (p.customerName || '').toLowerCase().includes(term);
+    const matchesProduct = p.items.some(item => 
+      item.name.toLowerCase().includes(term) || item.sku.toLowerCase().includes(term)
+    );
+    const matchesId = p.id.toLowerCase().includes(term);
+    return matchesCustomer || matchesProduct || matchesId;
+  });
+
   return (
-    <div className="space-y-4 md:space-y-6">
-      <div className="sticky top-0 z-20 bg-zinc-50 pt-1 -mt-1 space-y-4 md:space-y-6">
+    <div className="space-y-4 md:space-y-6 lg:pb-10">
+      <div className="sticky top-0 z-30 bg-zinc-50 pt-1 -mt-1 space-y-4 md:space-y-6 no-print">
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+            <input 
+              type="text"
+              placeholder="Cari Pelanggan, SKU, atau ID Pesanan..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 bg-white border border-zinc-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none shadow-sm"
+            />
+          </div>
+          <div className="flex bg-zinc-200 p-1 rounded-xl w-fit">
+            <button onClick={() => setTab('kanban')} className={cn("px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all", tab === 'kanban' ? "bg-white text-blue-600 shadow-sm" : "text-zinc-600 hover:text-zinc-800")}>Kanban</button>
+            <button onClick={() => setTab('input')} className={cn("px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all", tab === 'input' ? "bg-white text-blue-600 shadow-sm" : "text-zinc-600 hover:text-zinc-800")}>Input Pesanan</button>
+          </div>
+        </div>
+
         {tab === 'kanban' && (
           <div className="flex flex-wrap gap-2 md:gap-3 items-center bg-blue-50/80 backdrop-blur-md p-2 md:p-4 rounded-xl border border-blue-100 shadow-sm">
             <span className="text-[10px] font-black text-blue-600 uppercase mr-2 whitespace-nowrap">{selectedOrders.length} Terpilih</span>
@@ -2357,12 +2535,12 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
               <Printer className="w-3.5 h-3.5" /> Label
             </button>
 
-            {history && (
+            {history.length > 0 && (
               <button 
                 onClick={undoMove}
                 className="btn bg-orange-100 text-orange-700 hover:bg-orange-200 text-[10px] gap-1.5 py-1.5 border border-orange-200 whitespace-nowrap"
               >
-                <RotateCcw className="w-3.5 h-3.5" /> UNDO KELIRU
+                <RotateCcw className="w-3.5 h-3.5" /> UNDO ({history.length})
               </button>
             )}
 
@@ -2471,25 +2649,27 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
                       {m === 'pengiriman' && '🚚 Pending Kirim & Bayar'}
                     </h4>
                     <span className="text-[10px] font-bold bg-zinc-200 text-zinc-600 px-1.5 rounded">
-                      {preorders.filter((p: Preorder) => p.milestone === m).length}
+                      {filteredPreorders.filter((p: Preorder) => p.milestone === m).length}
                     </span>
                   </div>
                   <button 
                     onClick={() => selectAllInMilestone(m)}
                     className="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase tracking-tight text-left self-start"
                   >
-                    {preorders.filter((p: Preorder) => p.milestone === m).every(p => selectedOrders.includes(p.id)) && preorders.filter((p: Preorder) => p.milestone === m).length > 0 ? 'Deselect All' : 'Select All'}
+                    {filteredPreorders.filter((p: Preorder) => p.milestone === m).every(p => selectedOrders.includes(p.id)) && filteredPreorders.filter((p: Preorder) => p.milestone === m).length > 0 ? 'Deselect All' : 'Select All'}
                   </button>
                 </div>
 
                 <div className={cn(
                   "flex flex-col gap-3 border-2 border-dashed rounded-2xl p-2 transition-all duration-300",
-                  preorders.filter((p: Preorder) => p.milestone === m).length === 0 ? "min-h-[60px] md:min-h-[150px]" : "min-h-[150px] md:min-h-[500px]",
+                  filteredPreorders.filter((p: Preorder) => p.milestone === m).length === 0 ? "min-h-[60px] md:min-h-[150px]" : "min-h-[150px] md:min-h-[500px]",
                   m === 'produksi' ? "bg-red-50/40 border-red-100" :
                   m === 'penyimpanan' ? "bg-orange-50/40 border-orange-100" :
                   "bg-green-50/40 border-green-100"
                 )}>
-                  {preorders.filter((p: Preorder) => p.milestone === m).map((order: Preorder) => (
+                  {filteredPreorders.filter((p: Preorder) => p.milestone === m)
+                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()) // FIFO
+                    .map((order: Preorder) => (
                     <motion.div 
                       layoutId={order.id}
                       key={order.id}
@@ -2608,98 +2788,141 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
         </div>
       )}
 
-      {/* Summary Modal (A4 Mockup) */}
+      {/* Summary Modal (A4 Print Version) */}
       {showSummary && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center p-2 sm:p-8 backdrop-blur-sm overflow-auto">
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded p-4 sm:p-12 w-full max-w-[210mm] min-h-[297mm] shadow-2xl relative font-sans text-zinc-900 border border-zinc-200 mt-4 sm:mt-0 origin-top scale-[0.6] sm:scale-100">
-            <button onClick={() => setShowSummary(false)} className="absolute top-2 sm:top-4 right-2 sm:right-4 text-zinc-400 hover:text-zinc-600 no-print scale-150 sm:scale-100"><X /></button>
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-start justify-center p-2 sm:p-8 backdrop-blur-sm overflow-auto">
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded p-4 sm:p-12 w-full max-w-[210mm] min-h-[297mm] relative font-sans text-zinc-900 border border-zinc-200 mt-4 sm:mt-0 shadow-2xl print:shadow-none print:border-none print:m-0 print:p-8 print:w-full">
+            <button onClick={() => setShowSummary(false)} className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600 no-print"><X /></button>
             <div className="space-y-8">
-              <div className="text-center border-b pb-8">
-                <h2 className="text-2xl font-black uppercase tracking-widest">Summary Produksi (A4)</h2>
-                <p className="text-zinc-500">Dibuat pada {format(new Date(), 'dd MMMM yyyy HH:mm')}</p>
-                <p className="text-zinc-400 text-sm mt-1">{selectedOrders.length} Order Terpilih</p>
+              <div className="text-center border-b-2 border-zinc-900 pb-8 mt-4">
+                <h2 className="text-3xl font-black uppercase tracking-tight">{shopInfo.name}</h2>
+                <div className="text-xl font-bold uppercase tracking-widest mt-1">Summary Antrean Produksi (A4)</div>
+                <p className="text-zinc-500 font-mono mt-2 uppercase tracking-widest text-xs">Dibuat: {format(new Date(), 'dd MMMM yyyy HH:mm')}</p>
+                <p className="text-zinc-400 text-xs mt-1 font-bold">{selectedOrders.length} Pesanan Online Terpilih</p>
               </div>
 
-              <div className="space-y-4">
-                <h3 className="font-bold text-lg border-l-4 border-blue-600 pl-3">Total per SKU</h3>
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="bg-zinc-50 text-left border-b border-zinc-200">
-                      <th className="p-4 text-sm font-bold uppercase tracking-wider">SKU</th>
-                      <th className="p-4 text-sm font-bold uppercase tracking-wider">Nama Produk</th>
-                      <th className="p-4 text-sm font-bold uppercase tracking-wider text-center">Jumlah Produksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-200">
-                    {Object.entries(getSummary()).map(([sku, data]) => (
-                      <tr key={sku}>
-                        <td className="p-4 font-mono font-bold">{sku}</td>
-                        <td className="p-4">{data.name}</td>
-                        <td className="p-4 text-center font-black text-xl text-blue-600">{data.qty}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="mt-20 border-t pt-8 grid grid-cols-2 gap-8 text-sm">
-                <div className="space-y-4">
-                  <p className="font-bold text-zinc-400 uppercase tracking-widest">Daftar Order No:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedOrders.map(id => <span key={id} className="bg-zinc-100 px-2 py-1 rounded font-mono text-xs">{id}</span>)}
-                  </div>
+              <div className="space-y-6">
+                <div className="flex items-center gap-3 border-l-8 border-blue-600 pl-4 py-1">
+                  <h3 className="font-black text-xl uppercase tracking-widest">A. Total Bahan / Produk Harus Disiapkan</h3>
                 </div>
-                <div className="text-right flex flex-col justify-end">
-                  <p className="text-zinc-400">Verifikasi Produksi:</p>
-                  <div className="h-20 w-40 border border-zinc-100 self-end mt-2" />
+                <div className="border-2 border-zinc-900 rounded-2xl overflow-hidden">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-zinc-900 text-white text-left">
+                        <th className="p-4 text-xs font-black uppercase tracking-widest">SKU</th>
+                        <th className="p-4 text-xs font-black uppercase tracking-widest">Nama Produk</th>
+                        <th className="p-4 text-xs font-black uppercase tracking-widest text-center">Qty Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y-2 divide-zinc-100">
+                      {Object.entries(getSummary()).map(([sku, data]) => (
+                        <tr key={sku} className="font-bold">
+                          <td className="p-4 font-mono text-zinc-500">{sku}</td>
+                          <td className="p-4 text-base uppercase">{data.name}</td>
+                          <td className="p-4 text-center">
+                            <span className="text-3xl font-black bg-zinc-100 px-4 py-1 rounded-xl border border-zinc-200">
+                              {data.qty}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="space-y-6 pt-4">
+                <div className="flex items-center gap-3 border-l-8 border-zinc-400 pl-4 py-1">
+                  <h3 className="font-black text-xl uppercase tracking-widest">B. Rincian per Nomor CO</h3>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  {preorders.filter((p: Preorder) => selectedOrders.includes(p.id)).map(order => (
+                    <div key={order.id} className="border border-zinc-200 p-4 rounded-xl bg-zinc-50/50">
+                      <div className="flex justify-between items-start border-b border-zinc-200 pb-2 mb-2">
+                        <div className="font-black text-blue-600">{order.id}</div>
+                        <div className="text-[10px] font-black uppercase text-zinc-400">{order.customerName}</div>
+                      </div>
+                      <div className="space-y-1">
+                        {order.items.map((item, idx) => (
+                          <div key={idx} className="flex justify-between text-xs font-bold">
+                            <span className="truncate max-w-[150px] uppercase">{item.name}</span>
+                            <span className="bg-white px-2 rounded border border-zinc-200 font-black">x{item.quantity}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-12 border-t pt-8 flex justify-between items-end text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+                <div className="space-y-4">
+                  <div>Bagian Produksi:</div>
+                  <div className="h-16 w-48 border-b-2 border-zinc-900" />
+                </div>
+                <div className="text-right">
+                  Dihasilkan oleh Sistem UMKM Pintar
                 </div>
               </div>
             </div>
-            <button onClick={() => window.print()} className="fixed bottom-8 right-8 btn btn-primary px-8 py-3 shadow-2xl no-print">PRINT (A4)</button>
+            <button onClick={() => window.print()} className="fixed bottom-8 right-8 btn btn-primary px-10 py-4 shadow-2xl no-print font-black uppercase tracking-widest text-sm z-[110]">PRINT SUMMARY (A4)</button>
           </motion.div>
         </div>
       )}
 
-      {/* Label Print Modal */}
+      {/* Label Print Modal (Page Logic) */}
       {showLabels && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-start md:items-center justify-center p-2 sm:p-8 backdrop-blur-sm overflow-auto">
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-zinc-100 rounded p-4 sm:p-8 w-full max-w-4xl shadow-2xl relative mt-10 md:mt-0">
-            <button onClick={() => setShowLabels(false)} className="absolute top-2 sm:top-4 right-2 sm:right-4 text-zinc-400 hover:text-zinc-600 no-print cursor-pointer scale-150 sm:scale-100"><X /></button>
-            <h3 className="text-center font-bold mb-4 sm:mb-8 no-print">Preview Label CO</h3>
-            <div className="flex flex-wrap gap-4 sm:gap-6 justify-center">
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-start justify-center p-2 sm:p-8 backdrop-blur-sm overflow-auto">
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded p-4 sm:p-12 w-full max-w-4xl relative print:m-0 print:p-0 print:w-full print:shadow-none shadow-2xl">
+            <button onClick={() => setShowLabels(false)} className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600 no-print cursor-pointer scale-150 sm:scale-100"><X /></button>
+            <h3 className="text-center font-black uppercase tracking-widest mb-8 no-print text-zinc-400">Preview Label CO</h3>
+            
+            <div className="flex flex-wrap gap-4 sm:gap-8 justify-center print:block print:p-0">
               {preorders.filter((p: Preorder) => selectedOrders.includes(p.id)).map(order => (
-                <div key={order.id} className="bg-white p-4 sm:p-6 w-full sm:w-[100mm] border border-zinc-200 text-zinc-900 flex flex-col gap-3 sm:gap-4 font-sans text-xs">
-                  <div className="flex justify-between items-start border-b pb-3">
-                    <div className="font-black text-xl leading-none">{order.id}</div>
+                <div key={order.id} className="bg-white p-4 sm:p-8 w-full sm:w-[100mm] border-2 border-zinc-900 text-zinc-900 flex flex-col gap-4 font-sans print:w-full print:h-[135mm] print:mb-0 print:border-b-2 print:border-dashed print:page-break-inside-avoid">
+                  <div className="flex justify-between items-start border-b-4 border-zinc-900 pb-4">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Nomor Pesanan</div>
+                      <div className="font-black text-4xl leading-none tracking-tighter">{order.id}</div>
+                    </div>
                     <div className="text-right font-mono">
-                      <div className="text-[10px] text-zinc-400">TIPE PENGIRIMAN</div>
-                      <div className="font-bold text-blue-600">{order.deliveryMode.toUpperCase()}</div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Kurir</div>
+                      <div className="font-black text-xl text-blue-600 bg-blue-50 px-3 py-1 rounded-xl border border-blue-100">{order.deliveryMode.toUpperCase()}</div>
                     </div>
                   </div>
-                  <div className="space-y-1">
-                    <div className="text-[10px] text-zinc-500 uppercase tracking-widest">Penerima:</div>
-                    <div className="text-base font-bold uppercase">{order.customerName}</div>
+                  
+                  <div className="space-y-1 bg-zinc-900 text-white p-4 rounded-2xl">
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60">Nama Pelanggan</div>
+                    <div className="text-2xl font-black uppercase truncate">{order.customerName}</div>
                   </div>
-                  <div className="space-y-2 border-y border-dashed border-zinc-200 py-3">
-                    {order.items.map((item, idx) => (
-                      <div key={idx} className="flex justify-between items-center text-sm">
-                        <span className="font-bold uppercase">{item.name}</span>
-                        <span className="bg-zinc-900 text-white px-2 py-0.5 rounded font-black text-lg">x{item.quantity}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-2 text-center p-2 border border-zinc-100 bg-zinc-50 flex flex-col items-center gap-1">
-                    <div className="h-10 w-full flex items-center justify-center gap-[1px]">
-                      {Array.from({length: 40}).map((_, i) => (
-                        <div key={i} className="bg-zinc-800" style={{ width: Math.random() > 0.5 ? '2px' : '1px', height: '100%' }} />
+
+                  <div className="space-y-3 flex-1">
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Daftar Item:</div>
+                    <div className="space-y-2 border-y-2 border-dashed border-zinc-200 py-4">
+                      {order.items.map((item, idx) => (
+                        <div key={idx} className="flex justify-between items-center bg-zinc-50 p-2 rounded-xl border border-zinc-100">
+                          <span className="font-black uppercase text-base truncate max-w-[200px]">{item.name}</span>
+                          <span className="bg-zinc-900 text-white px-4 py-1 rounded-full font-black text-2xl">x{item.quantity}</span>
+                        </div>
                       ))}
                     </div>
-                    <span className="font-mono text-[10px] opacity-50">{order.id}</span>
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between gap-4 p-4 border-t-2 border-zinc-900">
+                     <div className="h-10 w-48 flex items-center justify-center gap-[1px] opacity-40">
+                      {Array.from({length: 40}).map((_, i) => (
+                        <div key={i} className="bg-zinc-900" style={{ width: Math.random() > 0.5 ? '3px' : '1px', height: '100%' }} />
+                      ))}
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[8px] font-black text-zinc-400 uppercase tracking-widest">Powered by</div>
+                      <div className="text-[10px] font-black uppercase tracking-tight">{shopInfo.name}</div>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
-            <button onClick={() => window.print()} className="mt-8 btn btn-primary w-full no-print">PRINT LABELS</button>
+            <button onClick={() => window.print()} className="mt-8 btn btn-primary w-full no-print py-4 font-black uppercase tracking-widest shadow-2xl">CETAK SEMUA LABEL</button>
           </motion.div>
         </div>
       )}
@@ -2707,9 +2930,42 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
   );
 }
 
-function SettingsView({ shopInfo, setShopInfo }: any) {
+function SettingsView({ shopInfo, setShopInfo, onResetData }: { shopInfo: ShopInfo, setShopInfo: any, onResetData: () => void }) {
   const [resetConfirm, setResetConfirm] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
+  const [showPin, setShowPin] = useState(false);
+  const [oldPin, setOldPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const triggerSuccess = (msg: string) => {
+    setSuccessMsg(msg);
+    setTimeout(() => setSuccessMsg(null), 3000);
+  };
+
+  const triggerError = (msg: string) => {
+    setErrorMsg(msg);
+    setTimeout(() => setErrorMsg(null), 3000);
+  };
+
   const confirmPhrase = "saya confirm untuk menghapus seluruh database yang telah ada";
+
+  const handleUpdatePin = () => {
+    const systemPin = shopInfo.systemPin || '1234';
+    if (oldPin !== systemPin && oldPin !== 'admin123') {
+      triggerError('PIN Lama Salah!');
+      return;
+    }
+    if (newPin.length < 4) {
+      triggerError('PIN Baru minimal 4 karakter');
+      return;
+    }
+    setShopInfo({ ...shopInfo, systemPin: newPin });
+    setOldPin('');
+    setNewPin('');
+    triggerSuccess('PIN Berhasil Diperbarui!');
+  };
 
   const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2742,8 +2998,46 @@ function SettingsView({ shopInfo, setShopInfo }: any) {
     });
   };
 
+  const handleReset = async () => {
+    const systemPin = shopInfo.systemPin || '1234';
+    if (resetConfirm === confirmPhrase && (resetPassword === systemPin || resetPassword === 'admin123')) {
+      if (confirm('PERINGATAN: Seluruh data akan dihapus permanen. Lanjutkan?')) {
+        await onResetData();
+        triggerSuccess('Database Berhasil Direset!');
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+      }
+    } else {
+      triggerError('PIN atau Kalimat Konfirmasi Salah!');
+    }
+  };
+
   return (
-    <div className="max-w-2xl mx-auto space-y-6 md:space-y-8 pb-24 md:pb-20 p-2 sm:p-0">
+    <div className="max-w-2xl mx-auto space-y-6 md:space-y-8 pb-24 md:pb-20 p-2 sm:p-0 relative">
+      <AnimatePresence>
+        {successMsg && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] bg-green-600 text-white px-6 py-3 rounded-full shadow-2xl font-bold flex items-center gap-2 whitespace-nowrap text-sm"
+          >
+            <CheckCircle2 className="w-4 h-4" /> {successMsg}
+          </motion.div>
+        )}
+        {errorMsg && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] bg-red-600 text-white px-6 py-3 rounded-full shadow-2xl font-bold flex items-center gap-2 whitespace-nowrap text-sm"
+          >
+            <X className="w-4 h-4" /> {errorMsg}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="card space-y-4 md:space-y-6 p-4 md:p-6">
         <h3 className="text-lg font-bold border-b border-zinc-100 pb-3 flex items-center gap-2">
           <Store className="w-5 h-5 text-blue-600" />
@@ -2809,18 +3103,60 @@ function SettingsView({ shopInfo, setShopInfo }: any) {
                   onChange={handleImageUpload}
                   className="text-xs text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer w-full"
                 />
-                {shopInfo.qrisImage && (
-                  <a 
-                    href={shopInfo.qrisImage} 
-                    download="QRIS_Toko.png" 
-                    className="inline-flex items-center gap-1.5 text-xs text-blue-600 font-bold hover:underline"
-                  >
-                    <Download className="w-3 h-3" /> Download Link QRIS (untuk WA)
-                  </a>
-                )}
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="card space-y-6">
+        <h3 className="text-lg font-bold border-b border-zinc-100 pb-3 flex items-center gap-2">
+          <CreditCard className="w-5 h-5 text-blue-600" />
+          Ganti PIN Keamanan
+        </h3>
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest pl-1">PIN Saat Ini</label>
+              <input 
+                type="password"
+                value={oldPin}
+                onChange={e => setOldPin(e.target.value)}
+                placeholder="Masukkan PIN Lama"
+                className="w-full p-3 bg-zinc-50 border border-zinc-100 rounded-xl font-mono tracking-widest focus:ring-2 focus:ring-blue-500/20 focus:bg-white outline-none"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest pl-1">PIN Baru</label>
+              <div className="relative">
+                <input 
+                  type={showPin ? "text" : "password"}
+                  value={newPin}
+                  onChange={e => setNewPin(e.target.value)}
+                  placeholder="PIN Baru"
+                  className="w-full p-3 bg-zinc-50 border border-zinc-100 rounded-xl font-mono tracking-widest focus:ring-2 focus:ring-blue-500/20 focus:bg-white outline-none"
+                />
+                <button 
+                  type="button"
+                  onClick={() => setShowPin(!showPin)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-zinc-400"
+                >
+                  {showPin ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4 rotate-45" />}
+                </button>
+              </div>
+            </div>
+          </div>
+          <button 
+            onClick={handleUpdatePin}
+            disabled={!oldPin || !newPin}
+            className={cn(
+              "btn w-full py-3 flex items-center justify-center gap-2 font-black tracking-widest uppercase text-xs",
+              (oldPin && newPin) ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20" : "bg-zinc-100 text-zinc-400 cursor-not-allowed"
+            )}
+          >
+            Update PIN
+          </button>
+          <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest text-center">Default PIN: 1234</p>
         </div>
       </div>
 
@@ -2847,40 +3183,42 @@ function SettingsView({ shopInfo, setShopInfo }: any) {
             shopInfo.bankAccounts.map((account: any, index: number) => (
               <div key={index} className="flex gap-3 items-end bg-zinc-50 p-4 rounded-xl border border-zinc-100 group">
                 <div className="flex-1 space-y-3">
-                  <div>
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Nama Bank / Platform</label>
-                    <input 
-                      type="text" 
-                      placeholder="Contoh: BCA, Mandiri, Dana"
-                      value={account.bankName}
-                      onChange={e => updateBankAccount(index, 'bankName', e.target.value)}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:ring-1 focus:ring-blue-500 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Nomor Rekening / HP</label>
-                    <input 
-                      type="text" 
-                      placeholder="Nomor rekening"
-                      value={account.accountNumber}
-                      onChange={e => updateBankAccount(index, 'accountNumber', e.target.value)}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:ring-1 focus:ring-blue-500 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Atas Nama (A/N)</label>
-                    <input 
-                      type="text" 
-                      placeholder="Nama pemilik rekening"
-                      value={account.accountName}
-                      onChange={e => updateBankAccount(index, 'accountName', e.target.value)}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:ring-1 focus:ring-blue-500 outline-none"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Bank / Platform</label>
+                      <input 
+                        type="text" 
+                        placeholder="BCA, Dana, dll"
+                        value={account.bankName}
+                        onChange={e => updateBankAccount(index, 'bankName', e.target.value)}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:ring-1 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-1">No. Rekening</label>
+                      <input 
+                        type="text" 
+                        placeholder="Nomor rekening"
+                        value={account.accountNumber}
+                        onChange={e => updateBankAccount(index, 'accountNumber', e.target.value)}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:ring-1 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-1">A/N</label>
+                      <input 
+                        type="text" 
+                        placeholder="Nama pemilik"
+                        value={account.accountName}
+                        onChange={e => updateBankAccount(index, 'accountName', e.target.value)}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:ring-1 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
                   </div>
                 </div>
                 <button 
                   onClick={() => removeBankAccount(index)}
-                  className="p-2.5 text-zinc-400 hover:text-red-600 bg-white border border-zinc-200 rounded-lg shadow-sm"
+                  className="p-2.5 text-zinc-400 hover:text-red-600 bg-white border border-zinc-200 rounded-lg shadow-sm mb-0.5"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -2895,35 +3233,48 @@ function SettingsView({ shopInfo, setShopInfo }: any) {
           <Trash2 className="w-5 h-5" />
           Hapus & Reset Database
         </h3>
-        <p className="text-sm text-red-600 opacity-80 leading-relaxed">
-          Tindakan ini akan menghapus seluruh database produk, riwayat penjualan, dan pengaturan toko secara permanen!
+        <p className="text-sm text-red-600 opacity-80 leading-relaxed font-bold">
+          Tindakan ini akan menghapus SELURUH data (Produk, Penjualan, Online Order, Kitchen, Dashboard) dan mengembalikan ke pengaturan awal!
         </p>
         
-        <div className="space-y-2">
-          <label className="text-[10px] font-black text-red-400 uppercase tracking-widest block">
-            Ketik teks berikut untuk konfirmasi:
-          </label>
-          <div className="bg-red-100/50 p-3 rounded-lg text-xs font-mono text-red-800 border border-red-200 select-all">
-            {confirmPhrase}
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-red-400 uppercase tracking-widest block">
+              1. Konfirmasi Kalimat:
+            </label>
+            <div className="bg-red-100/50 p-2 rounded-lg text-[10px] font-mono text-red-800 border border-red-200 select-all">
+              {confirmPhrase}
+            </div>
+            <input 
+              type="text" 
+              placeholder="Ketik kalimat konfirmasi..."
+              value={resetConfirm}
+              onPaste={(e) => e.preventDefault()}
+              onChange={(e) => setResetConfirm(e.target.value)}
+              className="w-full p-3 border-2 border-red-200 rounded-xl text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all"
+            />
           </div>
-          <input 
-            type="text" 
-            placeholder="Ketik kalimat konfirmasi di sini..."
-            value={resetConfirm}
-            onChange={(e) => setResetConfirm(e.target.value)}
-            className="w-full p-3 border-2 border-red-200 rounded-xl text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all"
-          />
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-red-400 uppercase tracking-widest block">
+              2. Masukkan PIN Sistem:
+            </label>
+            <input 
+              type="password" 
+              placeholder="Masukkan PIN Anda untuk verifikasi"
+              value={resetPassword}
+              onChange={(e) => setResetPassword(e.target.value)}
+              className="w-full p-3 border-2 border-red-200 rounded-xl text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all font-mono"
+            />
+          </div>
         </div>
 
         <button 
-          disabled={resetConfirm !== confirmPhrase}
-          onClick={() => {
-            localStorage.clear();
-            window.location.reload();
-          }}
+          disabled={resetConfirm !== confirmPhrase || !resetPassword}
+          onClick={handleReset}
           className={cn(
             "btn w-full font-black uppercase tracking-widest py-4 transition-all",
-            resetConfirm === confirmPhrase 
+            (resetConfirm === confirmPhrase && resetPassword)
               ? "bg-red-600 text-white hover:bg-red-700 shadow-lg shadow-red-200" 
               : "bg-zinc-200 text-zinc-400 cursor-not-allowed"
           )}
@@ -2938,6 +3289,7 @@ function SettingsView({ shopInfo, setShopInfo }: any) {
 function KitchenMonitorView({ activeOrders, setActiveOrders }: { activeOrders: ActiveOrder[], setActiveOrders: any }) {
   const statuses: OrderStatus[] = ['pending', 'preparing', 'ready'];
   const [history, setHistory] = useState<ActiveOrder[] | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const saveHistory = () => {
     setHistory([...activeOrders]);
@@ -2949,6 +3301,15 @@ function KitchenMonitorView({ activeOrders, setActiveOrders }: { activeOrders: A
       setHistory(null);
     }
   };
+
+  const filteredOrders = activeOrders.filter(order => {
+    const query = searchQuery.toLowerCase();
+    const matchesCustomer = (order.customerName || '').toLowerCase().includes(query);
+    const matchesTable = (order.tableNumber || '').toLowerCase().includes(query);
+    const matchesDesk = (order.id || '').toLowerCase().includes(query);
+    const matchesOrderNum = (order.orderNumber || '').toLowerCase().includes(query);
+    return matchesCustomer || matchesTable || matchesDesk || matchesOrderNum;
+  });
 
   const moveStatus = (id: string, current: OrderStatus) => {
     const nextMap: Record<OrderStatus, OrderStatus> = {
@@ -2999,20 +3360,31 @@ function KitchenMonitorView({ activeOrders, setActiveOrders }: { activeOrders: A
 
   return (
     <div className="space-y-4">
-      {history && (
-        <div className="flex justify-end">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 rounded-2xl border border-zinc-100 shadow-sm">
+        <div className="relative w-full sm:w-80">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" />
+          <input 
+            type="text" 
+            placeholder="Cari Meja / Customer / Order..." 
+            className="w-full pl-10 pr-4 py-2 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all text-xs"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+        {history && (
           <button 
             onClick={undoMove}
-            className="btn bg-orange-100 text-orange-700 hover:bg-orange-200 text-xs font-black uppercase tracking-widest gap-2 py-3 px-6 shadow-sm border border-orange-200"
+            className="btn bg-orange-50 text-orange-600 hover:bg-orange-100 text-[10px] font-black uppercase tracking-widest gap-2 py-2 px-4 shadow-sm border border-orange-100 rounded-xl"
           >
-            <RotateCcw className="w-4 h-4" /> Undo Klik Keliru
+            <RotateCcw className="w-3.5 h-3.5" /> Undo Klik Keliru
           </button>
-        </div>
-      )}
-      <div className="flex flex-col lg:grid lg:grid-cols-3 gap-6 h-auto lg:h-[80vh]">
+        )}
+      </div>
+
+      <div className="flex flex-col lg:grid lg:grid-cols-3 gap-6 h-auto lg:h-[75vh]">
       {statuses.map(status => {
         const config = getStatusConfig(status);
-        const filtered = activeOrders.filter(o => o.status === status);
+        const filtered = filteredOrders.filter(o => o.status === status);
         
         return (
           <div key={status} className={cn(
