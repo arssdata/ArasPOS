@@ -33,40 +33,100 @@ export default function App() {
 
   const downloadAsJPG = async (elementId: string, fileName: string) => {
     const element = document.getElementById(elementId);
-    if (!element) return;
+    if (!element) {
+      alert(`Error: Elemen ${elementId} tidak ditemukan.`);
+      return;
+    }
     
     setIsDownloading(true);
     try {
+      // Alert untuk memastikan tombol bekerja
+      console.log(`Starting download for ${elementId}...`);
+      
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff'
+        logging: true,
+        backgroundColor: '#ffffff',
+        onclone: (clonedDoc) => {
+          const style = clonedDoc.createElement('style');
+          style.innerHTML = `
+            * { 
+              color: rgb(0, 0, 0) !important; 
+              background-color: rgb(255, 255, 255) !important; 
+              border-color: rgb(0, 0, 0) !important; 
+            }
+            .text-blue-600, .bg-blue-600 { color: rgb(37, 99, 235) !important; background-color: rgb(37, 99, 235) !important; }
+            .text-green-600, .bg-green-600 { color: rgb(22, 163, 74) !important; background-color: rgb(22, 163, 74) !important; }
+            .text-zinc-500 { color: rgb(113, 113, 122) !important; }
+          `;
+          clonedDoc.head.appendChild(style);
+        }
       });
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
-      const link = document.createElement('a');
-      link.download = `${fileName}.jpg`;
-      link.href = dataUrl;
-      link.click();
+      
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          alert('Gagal membuat file gambar.');
+          setIsDownloading(false);
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.download = `${fileName}.jpg`;
+        link.href = url;
+        
+        // Tambahkan ke body untuk kompatibilitas browser mobile tertentu
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        URL.revokeObjectURL(url);
+        setIsDownloading(false);
+      }, 'image/jpeg', 0.95);
+      
     } catch (error) {
-      console.error('Download failed:', error);
-    } finally {
+      console.error('Download JPG failed:', error);
+      alert(`Terjadi kesalahan: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setIsDownloading(false);
     }
   };
 
   const downloadAsPDF = async (elementId: string, fileName: string) => {
     const element = document.getElementById(elementId);
-    if (!element) return;
+    if (!element) {
+      alert(`Error: Element ${elementId} tidak ditemukan.`);
+      return;
+    }
 
     setIsDownloading(true);
     try {
+      await new Promise(resolve => setTimeout(resolve, 200));
+
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
         logging: false,
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        windowWidth: element.scrollWidth,
+        windowHeight: element.scrollHeight,
+        onclone: (clonedDoc) => {
+          const style = clonedDoc.createElement('style');
+          style.innerHTML = `
+            * { 
+              color: rgb(0, 0, 0) !important; 
+              background-color: rgb(255, 255, 255) !important; 
+              border-color: rgb(0, 0, 0) !important; 
+            }
+            .text-blue-600, .bg-blue-600 { color: rgb(37, 99, 235) !important; background-color: rgb(37, 99, 235) !important; }
+            .text-green-600, .bg-green-600 { color: rgb(22, 163, 74) !important; background-color: rgb(22, 163, 74) !important; }
+            .text-zinc-500 { color: rgb(113, 113, 122) !important; }
+          `;
+          clonedDoc.head.appendChild(style);
+        }
       });
+      
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF({
         orientation: 'portrait',
@@ -78,9 +138,10 @@ export default function App() {
       const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`${fileName}.pdf`);
+      setIsDownloading(false);
     } catch (error) {
-      console.error('PDF generation failed:', error);
-    } finally {
+      console.error('Download PDF failed:', error);
+      alert('Terjadi kesalahan saat mengunduh PDF.');
       setIsDownloading(false);
     }
   };
@@ -92,6 +153,10 @@ export default function App() {
     message: 'Terima kasih telah berbelanja!',
     bankAccounts: []
   });
+
+  useEffect(() => {
+    document.title = shopInfo.name || 'ArasPOS';
+  }, [shopInfo.name]);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
 
   // Load data from API
@@ -572,6 +637,8 @@ export default function App() {
                   setPreorders={setPreorders}
                   setActiveOrders={setActiveOrders}
                   shopInfo={shopInfo}
+                  isDownloading={isDownloading}
+                  downloadAsJPG={downloadAsJPG}
                 />
               )}
               {view === 'kitchen' && (
@@ -665,7 +732,7 @@ const downloadCSV = (data: any[], filename: string) => {
   document.body.removeChild(link);
 };
 
-function POSView({ products, setProducts, cart, setCart, sales, setSales, preorders, setPreorders, setActiveOrders, shopInfo }: any) {
+function POSView({ products, setProducts, cart, setCart, sales, setSales, preorders, setPreorders, setActiveOrders, shopInfo, isDownloading, downloadAsJPG }: any) {
   const [search, setSearch] = useState('');
   const [showCheckout, setShowCheckout] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer'>('cash');
@@ -1180,12 +1247,21 @@ function POSView({ products, setProducts, cart, setCart, sales, setSales, preord
               </div>
             </div>
 
-            <button 
-              onClick={() => window.print()} 
-              className="w-full mt-6 btn btn-primary py-3 no-print flex items-center justify-center gap-2 font-bold shadow-lg"
-            >
-              <Printer className="w-5 h-5" /> Cetak Ticket Order
-            </button>
+             <div className="flex gap-2 w-full mt-6 no-print">
+               <button 
+                 onClick={() => window.print()} 
+                 className="flex-1 btn btn-primary py-3 flex items-center justify-center gap-2 font-bold shadow-lg"
+               >
+                 <Printer className="w-5 h-5" /> Cetak Ticket Order
+               </button>
+               <button 
+                 onClick={() => downloadAsJPG('bill-ticket', `Ticket_${showOrderList?.id || 'Order'}`)}
+                 disabled={isDownloading}
+                 className="flex-1 btn bg-green-600 text-white py-3 font-bold shadow-lg hover:bg-green-700 disabled:bg-zinc-400 flex items-center justify-center gap-2"
+               >
+                 {isDownloading ? <Clock className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} JPG (WA)
+               </button>
+             </div>
           </motion.div>
         </div>
       )}
@@ -2499,17 +2575,20 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
       ? shopInfo.bankAccounts.map((b: any) => `${b.bankName}: ${b.accountNumber} (A/N ${b.accountName || '-'})`).join('\n')
       : '[MENUNGGU REKENING TOKO]';
 
-    const text = `*STRUK BELANJA - ${shopInfo.name}*\n` +
-      `No: ${order.id}\n` +
-      `Tgl: ${format(new Date(order.date), 'dd/MM/yy HH:mm')}\n` +
-      `CP: ${shopInfo.phone}\n` +
+    const text = `Invoice Order\n` +
+      `*${shopInfo.name}*\n\n` +
+      `Customer : ${order.customerName || '-'}\n` +
+      `No : ${order.id}\n` +
+      `Tanggal : ${format(new Date(order.date), 'dd/MM/yy HH:mm')}\n` +
+      `CP : ${shopInfo.phone}\n` +
       `--------------------------\n` +
       `${order.items.map(i => `${i.name} (x${i.quantity}) - ${formatCurrency(i.price * i.quantity)}`).join('\n')}\n` +
       `--------------------------\n` +
       `Subtotal: ${formatCurrency(subtotal)}\n` +
-      `Ongkir (${order.deliveryMode}): ${formatCurrency(order.shippingCost)}\n` +
+      `Ongkir : ${formatCurrency(order.shippingCost)}\n` +
       `*TOTAL: ${formatCurrency(finalTotal)}*\n\n` +
-      `*PEMBAYARAN KE:*\n${bankText}\n\n` +
+      `*PEMBAYARAN KE:*\n${bankText}\n` +
+      `QRIS terlampir di struk pembelian\n\n` +
       `${shopInfo.message}`;
 
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
@@ -3045,10 +3124,10 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
               </div>
               <div className="space-y-1.5 py-2 border-b">
                 {selectedOrderForReceipt.items.map((item: any, i: number) => (
-                  <div key={i} className="flex justify-between text-[10px]">
-                    <span className="truncate max-w-[150px] uppercase">{item.name} x{item.quantity}</span>
-                    <span className="font-bold">{formatCurrency(item.price * item.quantity)}</span>
-                  </div>
+                    <div key={i} className="flex justify-between text-[10px] gap-2">
+                      <span className="flex-1 uppercase leading-tight">{item.name} x{item.quantity}</span>
+                      <span className="font-bold whitespace-nowrap">{formatCurrency(item.price * item.quantity)}</span>
+                    </div>
                 ))}
               </div>
               <div className="pt-2 space-y-1 text-xs">
@@ -3063,10 +3142,22 @@ function OnlineView({ preorders, setPreorders, sales, products, setProducts, set
                   </div>
                 )}
               </div>
-              <div className="pt-4 border-t text-center text-zinc-400 text-[10px] italic leading-tight">
-                <p>{shopInfo.message}</p>
-              </div>
-            </div>
+               <div className="pt-4 border-t text-center text-zinc-400 text-[10px] italic leading-tight">
+                 <p>{shopInfo.message}</p>
+               </div>
+               <div className="pt-6 flex flex-col items-center gap-3">
+                 <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Scan QRIS untuk pembayaran:</p>
+                 {shopInfo.qrisImage && (
+                   <div className="w-32 h-32 overflow-hidden rounded-xl border-2 border-zinc-100 shadow-sm bg-white">
+                     <img 
+                       src={shopInfo.qrisImage} 
+                       className="w-full h-full object-cover" 
+                       alt="QRIS" 
+                     />
+                   </div>
+                 )}
+               </div>
+             </div>
             <button 
               onClick={() => downloadAsJPG('online-receipt', `Receipt_${selectedOrderForReceipt.id}`)}
               disabled={isDownloading}

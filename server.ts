@@ -14,11 +14,21 @@ async function startServer() {
 
   app.use(express.json({ limit: '50mb' }));
 
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    next();
+  });
+
   // API routes
   app.get("/api/data", (req, res) => {
     if (fs.existsSync(DATA_FILE)) {
-      const data = fs.readFileSync(DATA_FILE, "utf-8");
-      res.json(JSON.parse(data));
+      try {
+        const data = fs.readFileSync(DATA_FILE, "utf-8");
+        res.json(JSON.parse(data));
+      } catch (e) {
+        console.error("Error parsing data.json:", e);
+        res.status(500).json({ error: "Internal Server Error: Invalid data file" });
+      }
     } else {
       res.json({});
     }
