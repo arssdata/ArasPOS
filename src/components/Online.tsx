@@ -753,15 +753,15 @@ export function OnlineView({ preorders, setPreorders, sales, products, setProduc
                  <p>{shopInfo.message}</p>
                </div>
                <div className="pt-6 flex flex-col items-center gap-3">
-                 <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Scan QRIS untuk pembayaran:</p>
+                 <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Scan / Upload QRIS untuk pembayaran:</p>
                  {shopInfo.qrisImage && (
-                   <div className="w-32 h-32 overflow-hidden rounded-xl border-2 border-zinc-100 shadow-sm bg-white">
-                     <img 
-                       src={shopInfo.qrisImage} 
-                       className="w-full h-full object-cover" 
-                       alt="QRIS" 
-                     />
-                   </div>
+                    <div className="w-48 h-48 border-2 border-zinc-100 shadow-sm bg-white">
+                      <img 
+                        src={shopInfo.qrisImage} 
+                        className="w-full h-full object-contain" 
+                        alt="QRIS" 
+                      />
+                    </div>
                  )}
                </div>
              </div>
@@ -776,9 +776,9 @@ export function OnlineView({ preorders, setPreorders, sales, products, setProduc
         </div>
       )}
        {/* Hidden Receipt for Direct Download */}
-       <div style={{ position: 'absolute', left: '-9999px', top: '0', pointerEvents: 'none' }}>
-         {downloadingReceiptOrder && (
-           <div id="hidden-online-receipt" className="bg-white p-6 rounded shadow-sm border font-mono text-sm space-y-4 w-[400px]">
+<div style={{ position: 'absolute', top: 0, left: 0, zIndex: -1, opacity: 0, pointerEvents: 'none' }}>
+          {downloadingReceiptOrder && (
+            <div id="hidden-online-receipt" className="bg-white p-6 rounded shadow-sm border font-mono text-sm space-y-4 w-[400px] m-4">
              <div className="text-center border-b pb-4 space-y-1">
                <h3 className="font-bold text-lg uppercase tracking-tight">{shopInfo.name}</h3>
                <p className="text-[10px] text-zinc-500 leading-relaxed">{shopInfo.address}</p>
@@ -822,15 +822,15 @@ export function OnlineView({ preorders, setPreorders, sales, products, setProduc
                <p>{shopInfo.message}</p>
              </div>
              <div className="pt-6 flex flex-col items-center gap-3">
-               <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Scan QRIS untuk pembayaran:</p>
+               <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Scan / Upload QRIS untuk pembayaran:</p>
                {shopInfo.qrisImage && (
-                 <div className="w-32 h-32 overflow-hidden rounded-xl border-2 border-zinc-100 shadow-sm bg-white">
-                   <img 
-                     src={shopInfo.qrisImage} 
-                     className="w-full h-full object-cover" 
-                     alt="QRIS" 
-                   />
-                 </div>
+                  <div className="w-48 h-48 border-2 border-zinc-100 shadow-sm bg-white">
+                    <img 
+                      src={shopInfo.qrisImage} 
+                      className="w-full h-full object-contain" 
+                      alt="QRIS" 
+                    />
+                  </div>
                )}
              </div>
            </div>

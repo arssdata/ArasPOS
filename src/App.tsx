@@ -1,4 +1,4 @@
-import React, { useState, useEffect, ChangeEvent, FormEvent } from 'react';
+import React, { useState, useEffect, useCallback, ChangeEvent, FormEvent } from 'react';
 import { 
   LayoutDashboard, Store, Package, History, Settings, LogOut, Menu, X, Plus, Search, Trash2, 
   ShoppingCart, Printer, CheckCircle2, ChevronRight, ChevronLeft, CreditCard, Wallet, Banknote, 
@@ -38,7 +38,7 @@ export default function App() {
   const [preorders, setPreorders] = useState<Preorder[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
 
-  const downloadAsPNG = async (elementId: string, fileName: string) => {
+  const downloadAsPNG = useCallback(async (elementId: string, fileName: string) => {
     const element = document.getElementById(elementId);
     if (!element) {
       alert(`Error: Elemen ${elementId} tidak ditemukan.`);
@@ -98,9 +98,9 @@ export default function App() {
       alert(`Terjadi kesalahan: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setIsDownloading(false);
     }
-  };
+  }, []);
 
-  const downloadAsPDF = async (elementId: string, fileName: string) => {
+  const downloadAsPDF = useCallback(async (elementId: string, fileName: string) => {
     const element = document.getElementById(elementId);
     if (!element) {
       alert(`Error: Element ${elementId} tidak ditemukan.`);
@@ -173,7 +173,7 @@ export default function App() {
       alert(`Terjadi kesalahan saat mengunduh PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setIsDownloading(false);
     }
-  };
+  }, []);
   const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
   const [shopInfo, setShopInfo] = useState<ShopInfo>({
     name: 'Warung Berkah UMKM',

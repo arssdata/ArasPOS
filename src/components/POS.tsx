@@ -561,7 +561,7 @@ export function POSView({ products, setProducts, cart, setCart, sales, setSales,
             className="bg-white rounded-lg p-4 sm:p-8 w-full max-w-sm shadow-sm relative my-auto"
           >
             <button onClick={() => setShowOrderList(null)} className="absolute top-2 sm:top-4 right-2 sm:right-4 text-zinc-400 hover:text-zinc-600 no-print cursor-pointer"><X /></button>
-            <div id="bill-ticket" className="bg-white p-4 sm:p-6 border-2 border-dashed border-zinc-200 font-mono text-xs sm:text-sm space-y-4">
+             <div id="bill-ticket" className="bg-white p-4 sm:p-6 font-mono text-xs sm:text-sm space-y-4">
               <div className="text-center border-b pb-4">
                 <h3 className="font-black text-xl uppercase italic tracking-tighter">Order Ticket</h3>
                 <p className="text-[10px] text-zinc-400 uppercase mt-1">{format(new Date(), 'dd/MM/yy HH:mm')}</p>
@@ -606,18 +606,57 @@ export function POSView({ products, setProducts, cart, setCart, sales, setSales,
                >
                  <Printer className="w-5 h-5" /> Cetak Ticket Order
                </button>
-               <button 
-                 onClick={() => downloadAsPNG('bill-ticket', `Ticket_${showOrderList?.id || 'Order'}`)}
-                 disabled={isDownloading}
-                 className="flex-1 btn bg-green-600 text-white py-3 font-bold shadow-lg hover:bg-green-700 disabled:bg-zinc-400 flex items-center justify-center gap-2"
-               >
-                 {isDownloading ? <Clock className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} PNG (WA)
-               </button>
+                <button 
+                  onClick={() => downloadAsPNG('hidden-bill-ticket', `Ticket_${showOrderList?.id || 'Order'}`)}
+                  disabled={isDownloading}
+                  className="flex-1 btn bg-green-600 text-white py-3 font-bold shadow-lg hover:bg-green-700 disabled:bg-zinc-400 flex items-center justify-center gap-2"
+                >
+                  {isDownloading ? <Clock className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} PNG (WA)
+                </button>
              </div>
           </div>
         </div>
-      )}
-    </div>
-  );
-}
+       )}
+       {/* Hidden Ticket for PNG Export */}
+       <div style={{ position: 'absolute', top: 0, left: 0, zIndex: -1, opacity: 0, pointerEvents: 'none' }}>
+         {showOrderList && (
+           <div id="hidden-bill-ticket" className="bg-white p-6 font-mono text-sm space-y-4 w-[350px] m-4">
+             <div className="text-center border-b pb-4">
+               <h3 className="font-black text-xl uppercase italic tracking-tighter">Order Ticket</h3>
+               <p className="text-[10px] text-zinc-400 uppercase mt-1">{format(new Date(), 'dd/MM/yy HH:mm')}</p>
+             </div>
+             <div className="flex justify-between items-center py-2 border-b-2 border-zinc-900 border-dotted text-xs">
+               <div className="font-black uppercase">
+                 <div>Tipe: {showOrderList.serviceType}</div>
+                 <div className="text-lg">
+                   {showOrderList.serviceType === 'Dine In' ? `Meja: ${showOrderList.tableNumber}` : `Antrean: ${showOrderList.orderNumber}`}
+                 </div>
+               </div>
+               <div className="text-right">
+                 <div className="text-[10px] text-zinc-400">#NOTA</div>
+                 <div className="font-black">#{showOrderList.id}</div>
+               </div>
+             </div>
+             <div className="space-y-4 py-4">
+               {showOrderList.items.map((item: any, idx: number) => (
+                 <div key={idx} className="flex justify-between items-start gap-4">
+                   <div className="flex gap-3">
+                     <span className="font-black text-lg">x{item.quantity}</span>
+                     <span className="font-bold uppercase leading-tight pt-1">{item.name}</span>
+                   </div>
+                 </div>
+               ))}
+             </div>
+             <div className="border-t-2 border-zinc-900 border-dotted pt-4">
+                <p className="text-[10px] text-center text-zinc-400 font-bold uppercase tracking-widest leading-relaxed">
+                  Pelanggan: {showOrderList.customerName}<br/>
+                  * PESANAN HARAP SEGERA DIPROSES *
+                </p>
+             </div>
+           </div>
+         )}
+       </div>
+     </div>
+   );
+ }
 
