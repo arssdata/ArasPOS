@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'motion/react';
 import { CheckCircle2, Clock, Trash2, AlertCircle, RotateCcw, Search, CheckCircle, Coffee, Utensils, ClipboardCheck, ArrowRight } from 'lucide-react';
 import { formatCurrency, cn } from '../lib/utils';
 import { ActiveOrder, OrderStatus } from '../types';
@@ -126,7 +127,7 @@ export function KitchenMonitorView({ activeOrders, setActiveOrders }: { activeOr
             <div className="flex-1 overflow-y-auto space-y-4 pr-2">
                <div>
                 {filtered.map(order => (
-                  <div 
+                  <motion.div 
                     layout
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -194,7 +195,7 @@ export function KitchenMonitorView({ activeOrders, setActiveOrders }: { activeOr
                          </div>
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
               {filtered.length === 0 && (

@@ -18,9 +18,13 @@ import { HistoryView } from './components/History';
 import { SettingsView } from './components/Settings';
 import { KitchenMonitorView } from './components/Kitchen';
 import { formatCurrency, generateId, generateOrderCode, cn } from './lib/utils';
-import html2canvas from 'html2canvas';
+import html2canvas from 'html2canvas-pro';
 import jsPDF from 'jspdf';
 import { format, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths, addMonths, isSameMonth, subDays, addDays, startOfDay, endOfDay, isWithinInterval, startOfWeek, endOfWeek, eachDayOfInterval, eachWeekOfInterval, isSameWeek, addWeeks, subWeeks } from 'date-fns';
+import { Product, CartItem, Sale, ActiveOrder, ShopInfo, Preorder, View, Milestone } from './types';
+import { collection, onSnapshot, doc, setDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { db } from './lib/firebase';
+
 
 // --- MOCK DATA ---
 const INITIAL_PRODUCTS: Product[] = [
@@ -33,10 +37,128 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('isLoggedIn') === 'true');
   const [loginPassword, setLoginPassword] = useState('');
   const [view, setView] = useState<View>('pos');
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [preorders, setPreorders] = useState<Preorder[]>([]);
+  const [products, setProductsState] = useState<Product[]>(INITIAL_PRODUCTS);
+  const [sales, setSalesState] = useState<Sale[]>([]);
+  const [preorders, setPreordersState] = useState<Preorder[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
+
+  // Background Firestore sync helpers
+  const syncProductsToFirestore = async (next: Product[]) => {
+    try {
+      const batch = writeBatch(db);
+      const snapshot = await getDocs(collection(db, 'products'));
+      const existingIds = snapshot.docs.map(d => d.id);
+      const nextIds = next.map(p => p.id);
+      
+      existingIds.forEach(id => {
+        if (!nextIds.includes(id)) {
+          batch.delete(doc(db, 'products', id));
+        }
+      });
+      next.forEach(p => {
+        batch.set(doc(db, 'products', p.id), p);
+      });
+      await batch.commit();
+    } catch (err) {
+      console.error("Failed to sync products:", err);
+    }
+  };
+
+  const syncSalesToFirestore = async (next: Sale[]) => {
+    try {
+      const batch = writeBatch(db);
+      const snapshot = await getDocs(collection(db, 'sales'));
+      const existingIds = snapshot.docs.map(d => d.id);
+      const nextIds = next.map(s => s.id);
+      
+      existingIds.forEach(id => {
+        if (!nextIds.includes(id)) {
+          batch.delete(doc(db, 'sales', id));
+        }
+      });
+      next.forEach(s => {
+        batch.set(doc(db, 'sales', s.id), s);
+      });
+      await batch.commit();
+    } catch (err) {
+      console.error("Failed to sync sales:", err);
+    }
+  };
+
+  const syncPreordersToFirestore = async (next: Preorder[]) => {
+    try {
+      const batch = writeBatch(db);
+      const snapshot = await getDocs(collection(db, 'preorders'));
+      const existingIds = snapshot.docs.map(d => d.id);
+      const nextIds = next.map(p => p.id);
+      
+      existingIds.forEach(id => {
+        if (!nextIds.includes(id)) {
+          batch.delete(doc(db, 'preorders', id));
+        }
+      });
+      next.forEach(p => {
+        batch.set(doc(db, 'preorders', p.id), p);
+      });
+      await batch.commit();
+    } catch (err) {
+      console.error("Failed to sync preorders:", err);
+    }
+  };
+
+  const syncActiveOrdersToFirestore = async (next: ActiveOrder[]) => {
+    try {
+      const batch = writeBatch(db);
+      const snapshot = await getDocs(collection(db, 'activeOrders'));
+      const existingIds = snapshot.docs.map(d => d.id);
+      const nextIds = next.map(a => a.id);
+      
+      existingIds.forEach(id => {
+        if (!nextIds.includes(id)) {
+          batch.delete(doc(db, 'activeOrders', id));
+        }
+      });
+      next.forEach(a => {
+        batch.set(doc(db, 'activeOrders', a.id), a);
+      });
+      await batch.commit();
+    } catch (err) {
+      console.error("Failed to sync activeOrders:", err);
+    }
+  };
+
+  const syncShopInfoToFirestore = async (next: ShopInfo) => {
+    try {
+      await setDoc(doc(db, 'shopInfo', 'settings'), next);
+    } catch (err) {
+      console.error("Failed to sync shopInfo:", err);
+    }
+  };
+
+  const setProducts = useCallback((newProductsOrUpdater: Product[] | ((prev: Product[]) => Product[])) => {
+    setProductsState((prev) => {
+      const next = typeof newProductsOrUpdater === 'function' ? newProductsOrUpdater(prev) : newProductsOrUpdater;
+      syncProductsToFirestore(next);
+      return next;
+    });
+  }, []);
+
+  const setSales = useCallback((newSalesOrUpdater: Sale[] | ((prev: Sale[]) => Sale[])) => {
+    setSalesState((prev) => {
+      const next = typeof newSalesOrUpdater === 'function' ? newSalesOrUpdater(prev) : newSalesOrUpdater;
+      syncSalesToFirestore(next);
+      return next;
+    });
+  }, []);
+
+  const setPreorders = useCallback((newPreordersOrUpdater: Preorder[] | ((prev: Preorder[]) => Preorder[])) => {
+    setPreordersState((prev) => {
+      const next = typeof newPreordersOrUpdater === 'function' ? newPreordersOrUpdater(prev) : newPreordersOrUpdater;
+      syncPreordersToFirestore(next);
+      return next;
+    });
+  }, []);
+
 
   const downloadAsPNG = useCallback(async (elementId: string, fileName: string) => {
     const element = document.getElementById(elementId);
@@ -46,6 +168,23 @@ export default function App() {
     }
     
     setIsDownloading(true);
+    
+    // Temporarily replace oklch/oklab in original document style tags to prevent html2canvas parsing errors
+    const originalStyles = new Map<HTMLStyleElement, string>();
+    try {
+      const styleTags = document.querySelectorAll('style');
+      styleTags.forEach((styleTag) => {
+        if (styleTag.textContent && (styleTag.textContent.includes('oklch') || styleTag.textContent.includes('oklab'))) {
+          originalStyles.set(styleTag, styleTag.textContent);
+          styleTag.textContent = styleTag.textContent
+            .replace(/oklch\([^)]+\)/g, 'rgb(120, 120, 120)')
+            .replace(/oklab\([^)]+\)/g, 'rgb(120, 120, 120)');
+        }
+      });
+    } catch (styleErr) {
+      console.error('Error pre-cleaning original styles:', styleErr);
+    }
+
     try {
       // Alert untuk memastikan tombol bekerja
       console.log(`Starting download for ${elementId}...`);
@@ -58,16 +197,152 @@ export default function App() {
         logging: true,
         backgroundColor: '#ffffff',
         onclone: (clonedDoc) => {
+          // Robust cleanup for oklch and oklab colors across style tags, inline styles, and stylesheet rules
+          try {
+            const styles = clonedDoc.querySelectorAll('style');
+            styles.forEach((s) => {
+              if (s.textContent && (s.textContent.includes('oklch') || s.textContent.includes('oklab'))) {
+                s.textContent = s.textContent
+                  .replace(/oklch\([^)]+\)/g, 'rgb(120, 120, 120)')
+                  .replace(/oklab\([^)]+\)/g, 'rgb(120, 120, 120)');
+              }
+            });
+          } catch (e) {
+            console.error('Error cleaning style tags:', e);
+          }
+
+          try {
+            const allElements = clonedDoc.querySelectorAll('*');
+            allElements.forEach((el: any) => {
+              if (el.style) {
+                for (let i = 0; i < el.style.length; i++) {
+                  const prop = el.style[i];
+                  const val = el.style.getPropertyValue(prop);
+                  if (val && (val.includes('oklch') || val.includes('oklab'))) {
+                    el.style.setProperty(prop, 'rgb(120, 120, 120)');
+                  }
+                }
+              }
+            });
+          } catch (e) {
+            console.error('Error cleaning inline styles:', e);
+          }
+
+          try {
+            const sheets = clonedDoc.styleSheets;
+            for (let i = 0; i < sheets.length; i++) {
+              const sheet = sheets[i];
+              try {
+                const rules = sheet.cssRules || sheet.rules;
+                if (rules) {
+                  for (let j = 0; j < rules.length; j++) {
+                    const rule = rules[j];
+                    if (rule && 'style' in rule) {
+                      const styleRule = rule as any;
+                      if (styleRule.style) {
+                        for (let k = 0; k < styleRule.style.length; k++) {
+                          const prop = styleRule.style[k];
+                          const val = styleRule.style.getPropertyValue(prop);
+                          if (val && (val.includes('oklch') || val.includes('oklab'))) {
+                            styleRule.style.setProperty(prop, 'rgb(120, 120, 120)');
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              } catch (e) {
+                // Ignore cross-origin stylesheet errors
+              }
+            }
+          } catch (globalE) {
+            console.error('Error cleaning stylesheets:', globalE);
+          }
+
           const style = clonedDoc.createElement('style');
           style.innerHTML = `
-            * { 
-              color: rgb(0, 0, 0) !important; 
-              background-color: rgb(255, 255, 255) !important; 
-              border-color: rgb(0, 0, 0) !important; 
+            /* Base reset for high-fidelity captured documents */
+            body {
+              background-color: rgb(255, 255, 255) !important;
+              color: rgb(9, 9, 11) !important;
             }
-            .text-blue-600, .bg-blue-600 { color: rgb(37, 99, 235) !important; background-color: rgb(37, 99, 235) !important; }
-            .text-green-600, .bg-green-600 { color: rgb(22, 163, 74) !important; background-color: rgb(22, 163, 74) !important; }
-            .text-zinc-500 { color: rgb(113, 113, 122) !important; }
+            .print-area-root {
+              background-color: rgb(255, 255, 255) !important;
+              color: rgb(9, 9, 11) !important;
+            }
+            
+            /* Background styles */
+            .bg-zinc-950 {
+              background-color: rgb(9, 9, 11) !important;
+              color: rgb(255, 255, 255) !important;
+            }
+            .bg-zinc-950 * {
+              color: rgb(255, 255, 255) !important;
+            }
+            .bg-zinc-900, .bg-black {
+              background-color: rgb(24, 24, 27) !important;
+            }
+            .bg-zinc-900 *, .bg-black * {
+              color: rgb(255, 255, 255) !important;
+            }
+            .bg-zinc-100 {
+              background-color: rgb(244, 244, 245) !important;
+            }
+            .bg-zinc-50 {
+              background-color: rgb(250, 250, 250) !important;
+            }
+            .bg-zinc-50\\/50 {
+              background-color: rgb(252, 252, 253) !important;
+            }
+            .bg-blue-50 {
+              background-color: rgb(239, 246, 255) !important;
+            }
+            .bg-green-50 {
+              background-color: rgb(240, 253, 244) !important;
+            }
+            .bg-zinc-200 {
+              background-color: rgb(228, 228, 231) !important;
+            }
+            
+            /* Text colors */
+            .text-white {
+              color: rgb(255, 255, 255) !important;
+            }
+            .text-zinc-900, .text-black, .text-zinc-800, .text-zinc-850 {
+              color: rgb(9, 9, 11) !important;
+            }
+            .text-zinc-500 {
+              color: rgb(113, 113, 122) !important;
+            }
+            .text-zinc-400 {
+              color: rgb(161, 161, 170) !important;
+            }
+            .text-blue-600 {
+              color: rgb(37, 99, 235) !important;
+            }
+            .text-green-700, .text-green-600 {
+              color: rgb(22, 163, 74) !important;
+            }
+            
+            /* Border colors and styles */
+            .border, .border-t, .border-b, .border-l, .border-r {
+              border-color: rgb(212, 212, 216) !important; /* fallback border-zinc-300 */
+            }
+            .border-zinc-900, .border-black {
+              border-color: rgb(9, 9, 11) !important;
+            }
+            .border-zinc-400 {
+              border-color: rgb(161, 161, 170) !important;
+            }
+            .border-zinc-300 {
+              border-color: rgb(212, 212, 216) !important;
+            }
+            .border-zinc-200, .border-zinc-200\\/60 {
+              border-color: rgb(228, 228, 231) !important;
+            }
+            .border-dashed {
+              border-style: dashed !important;
+            }
           `;
           clonedDoc.head.appendChild(style);
         }
@@ -97,6 +372,15 @@ export default function App() {
        console.error('Download PNG failed:', error);
       alert(`Terjadi kesalahan: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setIsDownloading(false);
+    } finally {
+      // Restore original styles
+      try {
+        originalStyles.forEach((originalContent, styleTag) => {
+          styleTag.textContent = originalContent;
+        });
+      } catch (restoreErr) {
+        console.error('Error restoring original styles:', restoreErr);
+      }
     }
   }, []);
 
@@ -108,6 +392,23 @@ export default function App() {
     }
 
     setIsDownloading(true);
+
+    // Temporarily replace oklch/oklab in original document style tags to prevent html2canvas parsing errors
+    const originalStyles = new Map<HTMLStyleElement, string>();
+    try {
+      const styleTags = document.querySelectorAll('style');
+      styleTags.forEach((styleTag) => {
+        if (styleTag.textContent && (styleTag.textContent.includes('oklch') || styleTag.textContent.includes('oklab'))) {
+          originalStyles.set(styleTag, styleTag.textContent);
+          styleTag.textContent = styleTag.textContent
+            .replace(/oklch\([^)]+\)/g, 'rgb(120, 120, 120)')
+            .replace(/oklab\([^)]+\)/g, 'rgb(120, 120, 120)');
+        }
+      });
+    } catch (styleErr) {
+      console.error('Error pre-cleaning original styles:', styleErr);
+    }
+
     try {
       await new Promise(resolve => setTimeout(resolve, 200));
 
@@ -117,8 +418,37 @@ export default function App() {
         logging: false,
         backgroundColor: '#ffffff',
         onclone: (clonedDoc) => {
-          // Fix for "unsupported color function oklch" error
-          // Remove any CSS rules that use oklch() as html2canvas cannot parse them
+          // Robust cleanup for oklch and oklab colors across style tags, inline styles, and stylesheet rules
+          try {
+            const styles = clonedDoc.querySelectorAll('style');
+            styles.forEach((s) => {
+              if (s.textContent && (s.textContent.includes('oklch') || s.textContent.includes('oklab'))) {
+                s.textContent = s.textContent
+                  .replace(/oklch\([^)]+\)/g, 'rgb(120, 120, 120)')
+                  .replace(/oklab\([^)]+\)/g, 'rgb(120, 120, 120)');
+              }
+            });
+          } catch (e) {
+            console.error('Error cleaning style tags:', e);
+          }
+
+          try {
+            const allElements = clonedDoc.querySelectorAll('*');
+            allElements.forEach((el: any) => {
+              if (el.style) {
+                for (let i = 0; i < el.style.length; i++) {
+                  const prop = el.style[i];
+                  const val = el.style.getPropertyValue(prop);
+                  if (val && (val.includes('oklch') || val.includes('oklab'))) {
+                    el.style.setProperty(prop, 'rgb(120, 120, 120)');
+                  }
+                }
+              }
+            });
+          } catch (e) {
+            console.error('Error cleaning inline styles:', e);
+          }
+
           try {
             const sheets = clonedDoc.styleSheets;
             for (let i = 0; i < sheets.length; i++) {
@@ -126,15 +456,24 @@ export default function App() {
               try {
                 const rules = sheet.cssRules || sheet.rules;
                 if (rules) {
-                  for (let j = rules.length - 1; j >= 0; j--) {
-                    if (rules[j].cssText && rules[j].cssText.includes('oklch')) {
-                      sheet.deleteRule(j);
+                  for (let j = 0; j < rules.length; j++) {
+                    const rule = rules[j];
+                    if (rule && 'style' in rule) {
+                      const styleRule = rule as any;
+                      if (styleRule.style) {
+                        for (let k = 0; k < styleRule.style.length; k++) {
+                          const prop = styleRule.style[k];
+                          const val = styleRule.style.getPropertyValue(prop);
+                          if (val && (val.includes('oklch') || val.includes('oklab'))) {
+                            styleRule.style.setProperty(prop, 'rgb(120, 120, 120)');
+                          }
+                        }
+                      }
                     }
                   }
                 }
               } catch (e) {
-                // Cross-origin stylesheets might throw errors
-                console.warn('Could not access stylesheet rules:', e);
+                // Ignore cross-origin stylesheet errors
               }
             }
           } catch (globalE) {
@@ -143,14 +482,88 @@ export default function App() {
 
           const style = clonedDoc.createElement('style');
           style.innerHTML = `
-            * { 
-              color: rgb(0, 0, 0) !important; 
-              background-color: rgb(255, 255, 255) !important; 
-              border-color: rgb(0, 0, 0) !important; 
+            /* Base reset for high-fidelity captured documents */
+            body {
+              background-color: rgb(255, 255, 255) !important;
+              color: rgb(9, 9, 11) !important;
             }
-            .text-blue-600, .bg-blue-600 { color: rgb(37, 99, 235) !important; background-color: rgb(37, 99, 235) !important; }
-            .text-green-600, .bg-green-600 { color: rgb(22, 163, 74) !important; background-color: rgb(22, 163, 74) !important; }
-            .text-zinc-500 { color: rgb(113, 113, 122) !important; }
+            .print-area-root {
+              background-color: rgb(255, 255, 255) !important;
+              color: rgb(9, 9, 11) !important;
+            }
+            
+            /* Background styles */
+            .bg-zinc-950 {
+              background-color: rgb(9, 9, 11) !important;
+              color: rgb(255, 255, 255) !important;
+            }
+            .bg-zinc-950 * {
+              color: rgb(255, 255, 255) !important;
+            }
+            .bg-zinc-900, .bg-black {
+              background-color: rgb(24, 24, 27) !important;
+            }
+            .bg-zinc-900 *, .bg-black * {
+              color: rgb(255, 255, 255) !important;
+            }
+            .bg-zinc-100 {
+              background-color: rgb(244, 244, 245) !important;
+            }
+            .bg-zinc-50 {
+              background-color: rgb(250, 250, 250) !important;
+            }
+            .bg-zinc-50\\/50 {
+              background-color: rgb(252, 252, 253) !important;
+            }
+            .bg-blue-50 {
+              background-color: rgb(239, 246, 255) !important;
+            }
+            .bg-green-50 {
+              background-color: rgb(240, 253, 244) !important;
+            }
+            .bg-zinc-200 {
+              background-color: rgb(228, 228, 231) !important;
+            }
+            
+            /* Text colors */
+            .text-white {
+              color: rgb(255, 255, 255) !important;
+            }
+            .text-zinc-900, .text-black, .text-zinc-800, .text-zinc-850 {
+              color: rgb(9, 9, 11) !important;
+            }
+            .text-zinc-500 {
+              color: rgb(113, 113, 122) !important;
+            }
+            .text-zinc-400 {
+              color: rgb(161, 161, 170) !important;
+            }
+            .text-blue-600 {
+              color: rgb(37, 99, 235) !important;
+            }
+            .text-green-700, .text-green-600 {
+              color: rgb(22, 163, 74) !important;
+            }
+            
+            /* Border colors and styles */
+            .border, .border-t, .border-b, .border-l, .border-r {
+              border-color: rgb(212, 212, 216) !important; /* fallback border-zinc-300 */
+            }
+            .border-zinc-900, .border-black {
+              border-color: rgb(9, 9, 11) !important;
+            }
+            .border-zinc-400 {
+              border-color: rgb(161, 161, 170) !important;
+            }
+            .border-zinc-300 {
+              border-color: rgb(212, 212, 216) !important;
+            }
+            .border-zinc-200, .border-zinc-200\\/60 {
+              border-color: rgb(228, 228, 231) !important;
+            }
+            .border-dashed {
+              border-style: dashed !important;
+            }
           `;
           clonedDoc.head.appendChild(style);
         }
@@ -172,10 +585,19 @@ export default function App() {
       console.error('Download PDF failed:', error);
       alert(`Terjadi kesalahan saat mengunduh PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setIsDownloading(false);
+    } finally {
+      // Restore original styles
+      try {
+        originalStyles.forEach((originalContent, styleTag) => {
+          styleTag.textContent = originalContent;
+        });
+      } catch (restoreErr) {
+        console.error('Error restoring original styles:', restoreErr);
+      }
     }
   }, []);
-  const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
-  const [shopInfo, setShopInfo] = useState<ShopInfo>({
+  const [activeOrders, setActiveOrdersState] = useState<ActiveOrder[]>([]);
+  const [shopInfo, setShopInfoState] = useState<ShopInfo>({
     name: 'Warung Berkah UMKM',
     address: 'Jl. Merdeka No. 123, Jakarta',
     phone: '0812-3456-7890',
@@ -183,54 +605,98 @@ export default function App() {
     bankAccounts: []
   });
 
+  const setActiveOrders = useCallback((newActiveOrdersOrUpdater: ActiveOrder[] | ((prev: ActiveOrder[]) => ActiveOrder[])) => {
+    setActiveOrdersState((prev) => {
+      const next = typeof newActiveOrdersOrUpdater === 'function' ? newActiveOrdersOrUpdater(prev) : newActiveOrdersOrUpdater;
+      syncActiveOrdersToFirestore(next);
+      return next;
+    });
+  }, []);
+
+  const setShopInfo = useCallback((newShopInfoOrUpdater: ShopInfo | ((prev: ShopInfo) => ShopInfo)) => {
+    setShopInfoState((prev) => {
+      const next = typeof newShopInfoOrUpdater === 'function' ? newShopInfoOrUpdater(prev) : newShopInfoOrUpdater;
+      syncShopInfoToFirestore(next);
+      return next;
+    });
+  }, []);
+
+  // Listen to Firestore changes for real-time multi-device synchronization
+  useEffect(() => {
+    const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+      if (snapshot.empty) {
+        // If Firestore products collection is empty, seed it with INITIAL_PRODUCTS
+        syncProductsToFirestore(INITIAL_PRODUCTS);
+        return;
+      }
+      const items: Product[] = [];
+      snapshot.forEach(docSnap => {
+        items.push(docSnap.data() as Product);
+      });
+      // Sort alphabetically by name
+      items.sort((a, b) => a.name.localeCompare(b.name));
+      setProductsState(items);
+    }, (err) => console.error("Firestore products listen error:", err));
+
+    const unsubSales = onSnapshot(collection(db, 'sales'), (snapshot) => {
+      const items: Sale[] = [];
+      snapshot.forEach(docSnap => {
+        items.push(docSnap.data() as Sale);
+      });
+      // Sort by date descending (newest sales first)
+      items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setSalesState(items);
+    }, (err) => console.error("Firestore sales listen error:", err));
+
+    const unsubPreorders = onSnapshot(collection(db, 'preorders'), (snapshot) => {
+      const items: Preorder[] = [];
+      snapshot.forEach(docSnap => {
+        items.push(docSnap.data() as Preorder);
+      });
+      // Sort by date descending
+      items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setPreordersState(items);
+    }, (err) => console.error("Firestore preorders listen error:", err));
+
+    const unsubActiveOrders = onSnapshot(collection(db, 'activeOrders'), (snapshot) => {
+      const items: ActiveOrder[] = [];
+      snapshot.forEach(docSnap => {
+        items.push(docSnap.data() as ActiveOrder);
+      });
+      // Keep active orders in consistent order
+      items.sort((a, b) => a.id.localeCompare(b.id));
+      setActiveOrdersState(items);
+    }, (err) => console.error("Firestore activeOrders listen error:", err));
+
+    const unsubShopInfo = onSnapshot(doc(db, 'shopInfo', 'settings'), (docSnap) => {
+      if (docSnap.exists()) {
+        setShopInfoState(docSnap.data() as ShopInfo);
+      } else {
+        // Seed default shop info if not exists
+        const defaultShopInfo = {
+          name: 'Warung Berkah UMKM',
+          address: 'Jl. Merdeka No. 123, Jakarta',
+          phone: '0812-3456-7890',
+          message: 'Terima kasih telah berbelanja!',
+          bankAccounts: []
+        };
+        syncShopInfoToFirestore(defaultShopInfo);
+      }
+    }, (err) => console.error("Firestore shopInfo listen error:", err));
+
+    return () => {
+      unsubProducts();
+      unsubSales();
+      unsubPreorders();
+      unsubActiveOrders();
+      unsubShopInfo();
+    };
+  }, []);
+
   useEffect(() => {
     document.title = shopInfo.name || 'ArasPOS';
   }, [shopInfo.name]);
-  const [isDataLoaded, setIsDataLoaded] = useState(false);
 
-  // Load data from API
-  useEffect(() => {
-    fetch('/api/data')
-      .then(res => res.json())
-      .then(data => {
-        if (data.products) setProducts(data.products);
-        if (data.sales) setSales(data.sales);
-        if (data.preorders) setPreorders(data.preorders);
-        if (data.activeOrders) setActiveOrders(data.activeOrders);
-        if (data.shopInfo) setShopInfo(data.shopInfo);
-        setIsDataLoaded(true);
-      })
-      .catch(err => {
-        console.error("Failed to load data from server", err);
-        setIsDataLoaded(true); // Proceed anyway with initial/local data as fallback
-      });
-  }, []);
-
-  // Save data to API
-  const saveDataToServer = async (currentData: any) => {
-    try {
-      await fetch('/api/data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(currentData)
-      });
-    } catch (err) {
-      console.error("Failed to save data to server", err);
-    }
-  };
-
-  useEffect(() => {
-    if (isDataLoaded) {
-      const data = { products, sales, preorders, activeOrders, shopInfo };
-      saveDataToServer(data);
-      // Still keep local storage as a quick backup
-      localStorage.setItem('products', JSON.stringify(products));
-      localStorage.setItem('sales', JSON.stringify(sales));
-      localStorage.setItem('preorders', JSON.stringify(preorders));
-      localStorage.setItem('activeOrders', JSON.stringify(activeOrders));
-      localStorage.setItem('shopInfo', JSON.stringify(shopInfo));
-    }
-  }, [products, sales, preorders, activeOrders, shopInfo, isDataLoaded]);
 
   // Update document title
   useEffect(() => {
@@ -284,14 +750,6 @@ export default function App() {
     setCart([]);
     
     localStorage.clear();
-    
-    await saveDataToServer({
-      products: INITIAL_PRODUCTS,
-      sales: [],
-      preorders: [],
-      activeOrders: [],
-      shopInfo: defaultShopInfo
-    });
   };
 
   const handleLogout = () => {
@@ -658,6 +1116,8 @@ export default function App() {
                   shopInfo={tempShopInfo} 
                   setShopInfo={setTempShopInfo} 
                   onResetData={resetDatabase}
+                  products={products}
+                  setProducts={setProducts}
                 />
               )}
             </div>

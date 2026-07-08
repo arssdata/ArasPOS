@@ -7,7 +7,7 @@ import {
 import { formatCurrency, generateId, generateOrderCode, cn } from '../lib/utils';
 import { Product, Sale, CartItem, ShopInfo, Preorder, Milestone, PreorderItem, ActiveOrder, OrderStatus } from '../types';
 import { format } from 'date-fns';
-import html2canvas from 'html2canvas';
+import html2canvas from 'html2canvas-pro';
 import jsPDF from 'jspdf';
 
 export function POSView({ products, setProducts, cart, setCart, sales, setSales, preorders, setPreorders, setActiveOrders, shopInfo, isDownloading, downloadAsPNG }: any) {
@@ -40,34 +40,59 @@ export function POSView({ products, setProducts, cart, setCart, sales, setSales,
     const lines = bulkText.split('\n').filter(line => line.trim() !== '');
     if (lines.length === 0) return;
 
-    // Process only the first line for the current cart
-    const line = lines[0];
-    const [name, itemsStr, delivery] = line.split('|').map(s => s.trim());
-    
-    if (!name || !itemsStr) {
-      alert("Format tidak valid. Gunakan: Nama | SKU:Qty, SKU:Qty | Kurir");
-      return;
+    const todayStr = format(new Date(), 'ddMMyy');
+    const allOrders = [...(sales || []), ...(preorders || [])];
+    const todayOrders = allOrders.filter(o => o.id.includes(todayStr));
+    let nextSeq = todayOrders.length === 0 ? 1 : 
+      Math.max(...todayOrders.map(o => {
+        const seq = parseInt(o.id.slice(-4));
+        return isNaN(seq) ? 0 : seq;
+      })) + 1;
+
+    const newPreorders: Preorder[] = [];
+
+    for (const line of lines) {
+      const parts = line.split('|').map(s => s.trim());
+      const [name, itemsStr, delivery] = parts;
+      
+      if (!name || !itemsStr) {
+        alert(`Format baris tidak valid: "${line}".\nGunakan format: Nama | SKU:Qty, SKU:Qty | Kurir`);
+        return;
+      }
+
+      const itemsToAdd = itemsStr.split(',').map(itemStr => {
+        const [sku, qty] = itemStr.trim().split(':');
+        const product = products.find((p: any) => p.sku === sku);
+        if (!product) {
+          console.warn(`Product with SKU ${sku} not found`);
+        }
+        return {
+          sku: sku || 'N/A',
+          name: product?.name || `Product ${sku || 'Unknown'}`,
+          quantity: parseInt(qty) || 1,
+          price: product?.price || 0
+        };
+      });
+
+      const totalLine = itemsToAdd.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+      const orderId = generateOrderCode('ONL', nextSeq);
+      nextSeq++;
+
+      const newPreorder: Preorder = {
+        id: orderId,
+        date: new Date().toISOString(),
+        customerName: name,
+        items: itemsToAdd,
+        deliveryMode: delivery || 'Pick up',
+        shippingCost: 0,
+        milestone: 'produksi',
+        total: totalLine
+      };
+
+      newPreorders.push(newPreorder);
     }
 
-    const itemsToAdd: CartItem[] = itemsStr.split(',').map(itemStr => {
-      const [sku, qty] = itemStr.trim().split(':');
-      const product = products.find((p: any) => p.sku === sku);
-      if (!product) {
-        console.warn(`Product with SKU ${sku} not found`);
-      }
-      return {
-        id: product?.id || generateId(),
-        sku: sku || 'N/A',
-        name: product?.name || `Product ${sku || 'Unknown'}`,
-        quantity: parseInt(qty) || 1,
-        price: product?.price || 0
-      };
-    });
-
-    setCart(itemsToAdd);
-    setCustomerName(name);
-    setServiceType('Online');
-    setDeliveryMode(delivery || 'Pick up');
+    setPreorders((prev: Preorder[]) => [...newPreorders, ...prev]);
     setBulkText('');
     setShowBulkOrder(false);
   };
@@ -255,7 +280,7 @@ export function POSView({ products, setProducts, cart, setCart, sales, setSales,
             onClick={parseBulkOrder}
             className="w-full btn btn-primary py-2 text-xs"
           >
-            Proses ke Keranjang
+            Proses Booking Online (Kirim ke Pending Produksi)
           </button>
         </div>
       )}

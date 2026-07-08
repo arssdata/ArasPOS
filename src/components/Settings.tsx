@@ -3,9 +3,47 @@ import { Save, Trash2, Upload, Download, Settings, Store, Package, User, Bell, P
 import { formatCurrency, cn } from '../lib/utils';
 import { ShopInfo, Product } from '../types';
 
-export function SettingsView({ shopInfo, setShopInfo, onResetData }: { shopInfo: ShopInfo, setShopInfo: any, onResetData: () => void }) {
+export function SettingsView({ 
+  shopInfo, 
+  setShopInfo, 
+  onResetData,
+  products = [],
+  setProducts
+}: { 
+  shopInfo: ShopInfo; 
+  setShopInfo: any; 
+  onResetData: () => void;
+  products?: Product[];
+  setProducts?: (products: Product[]) => void;
+}) {
   const [resetConfirm, setResetConfirm] = useState('');
   const [resetPassword, setResetPassword] = useState('');
+  const [selectedProductId, setSelectedProductId] = useState<string>('');
+  const [currentRecipe, setCurrentRecipe] = useState<{ name: string; amount: number; uom: string }[]>([]);
+
+  useEffect(() => {
+    if (selectedProductId) {
+      const prod = products.find(p => p.id === selectedProductId);
+      if (prod) {
+        setCurrentRecipe(prod.recipe || []);
+      }
+    } else {
+      setCurrentRecipe([]);
+    }
+  }, [selectedProductId, products]);
+
+  const handleSaveRecipe = () => {
+    if (!selectedProductId || !setProducts) return;
+    const updatedProducts = products.map(p => {
+      if (p.id === selectedProductId) {
+        const cleanedRecipe = currentRecipe.filter(r => r.name.trim() !== '');
+        return { ...p, recipe: cleanedRecipe };
+      }
+      return p;
+    });
+    setProducts(updatedProducts);
+    triggerSuccess('Resep berhasil disimpan!');
+  };
   const [showPin, setShowPin] = useState(false);
   const [oldPin, setOldPin] = useState('');
   const [newPin, setNewPin] = useState('');
@@ -299,6 +337,118 @@ export function SettingsView({ shopInfo, setShopInfo, onResetData }: { shopInfo:
             ))
           )}
         </div>
+      </div>
+
+      {/* Recipe Settings Section */}
+      <div className="card space-y-4 md:space-y-6 p-4 md:p-6">
+        <h3 className="text-lg font-bold border-b border-zinc-100 pb-3 flex items-center gap-2">
+          <Package className="w-5 h-5 text-blue-600" />
+          Pengaturan Resep & Bahan Baku SKU
+        </h3>
+        <div>
+          <label className="text-xs font-semibold text-zinc-500 uppercase block mb-1">Pilih Produk (SKU)</label>
+          <select 
+            value={selectedProductId}
+            onChange={e => setSelectedProductId(e.target.value)}
+            className="w-full p-2.5 bg-white border border-zinc-200 rounded-lg focus:ring-2 focus:ring-blue-600 focus:outline-none text-sm"
+          >
+            <option value="">-- Pilih Produk --</option>
+            {products.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.name} ({p.sku})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {selectedProductId && (
+          <div className="space-y-4 mt-4 pt-4 border-t border-zinc-100">
+            <h4 className="text-xs font-black text-zinc-400 uppercase tracking-wider">Komposisi Bahan Baku:</h4>
+            
+            {currentRecipe.length === 0 ? (
+              <div className="text-center py-6 text-zinc-400 text-sm italic">
+                Belum ada bahan baku ditambahkan untuk produk ini.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {currentRecipe.map((ing, index) => (
+                  <div key={index} className="flex gap-2 items-end bg-zinc-50 p-3 rounded-lg border border-zinc-100">
+                    <div className="grid grid-cols-3 gap-2 flex-1">
+                      <div>
+                        <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Nama Bahan</label>
+                        <input 
+                          type="text" 
+                          placeholder="Tepung, Gula, Susu..."
+                          value={ing.name}
+                          onChange={e => {
+                            const newRec = [...currentRecipe];
+                            newRec[index].name = e.target.value;
+                            setCurrentRecipe(newRec);
+                          }}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Jumlah</label>
+                        <input 
+                          type="number" 
+                          step="any"
+                          placeholder="Contoh: 150"
+                          value={ing.amount || ''}
+                          onChange={e => {
+                            const newRec = [...currentRecipe];
+                            newRec[index].amount = parseFloat(e.target.value) || 0;
+                            setCurrentRecipe(newRec);
+                          }}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Satuan (UOM)</label>
+                        <input 
+                          type="text" 
+                          placeholder="gr, ml, pcs..."
+                          value={ing.uom}
+                          onChange={e => {
+                            const newRec = [...currentRecipe];
+                            newRec[index].uom = e.target.value;
+                            setCurrentRecipe(newRec);
+                          }}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        setCurrentRecipe(currentRecipe.filter((_, idx) => idx !== index));
+                      }}
+                      className="p-2 text-zinc-400 hover:text-red-600 bg-white border border-zinc-200 rounded-lg shadow-sm"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <button 
+                onClick={() => {
+                  setCurrentRecipe([...currentRecipe, { name: '', amount: 0, uom: '' }]);
+                }}
+                className="flex-1 text-xs btn btn-secondary py-2 flex items-center justify-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" /> Tambah Bahan
+              </button>
+              <button 
+                onClick={handleSaveRecipe}
+                className="flex-1 text-xs btn btn-primary py-2 flex items-center justify-center gap-1.5 shadow-md"
+              >
+                <Save className="w-3.5 h-3.5" /> Simpan Resep
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="card bg-red-50 border-red-100 space-y-4">

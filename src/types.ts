@@ -1,3 +1,9 @@
+export interface Ingredient {
+  name: string;
+  amount: number;
+  uom: string;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -8,6 +14,7 @@ export interface Product {
   category: string;
   image?: string;
   sku: string;
+  recipe?: Ingredient[];
 }
 
 export interface CartItem extends Product {

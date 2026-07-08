@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, ChangeEvent } from 'react';
 import { Plus, Search, Trash2, PackagePlus, Save, X, FileText, Filter, Download, CheckCircle2, Settings } from 'lucide-react';
 import { formatCurrency, generateId, cn, downloadCSV } from '../lib/utils';
 import { format } from 'date-fns';

@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'motion/react';
 import { 
   Plus, Search, Trash2, Download, Save, QrCode, CheckCircle, Printer,
   Truck, PackagePlus, ClipboardList, Filter, Calendar, Clock, ArrowRight, RotateCcw, X, ChevronRight, ChevronLeft, ShoppingCart, CheckCircle2
 } from 'lucide-react';
 import { formatCurrency, generateId, generateOrderCode, cn } from '../lib/utils';
-import { Product, Sale, ShopInfo, Preorder, PreorderItem, ActiveOrder, OrderStatus } from '../types';
+import { Product, Sale, ShopInfo, Preorder, PreorderItem, ActiveOrder, OrderStatus, Milestone } from '../types';
 import { format } from 'date-fns';
-import html2canvas from 'html2canvas';
+import html2canvas from 'html2canvas-pro';
 import jsPDF from 'jspdf';
 
 export function OnlineView({ preorders, setPreorders, sales, products, setProducts, setSales, shopInfo, downloadAsPNG, downloadAsPDF, isDownloading }: any) {
@@ -315,6 +316,124 @@ export function OnlineView({ preorders, setPreorders, sales, products, setProduc
     return summary;
   };
 
+  const getIngredientSummary = () => {
+    const summary = getSummary();
+    const ingredientSummary: Record<string, { name: string, amount: number, uom: string }> = {};
+    let hasAnyRecipe = false;
+
+    Object.entries(summary).forEach(([sku, data]) => {
+      const prod = products.find((p: any) => p.sku === sku);
+      if (prod && prod.recipe && prod.recipe.length > 0) {
+        hasAnyRecipe = true;
+        prod.recipe.forEach((ing: any) => {
+          const key = ing.name.toLowerCase().trim();
+          const totalAmount = (ing.amount || 0) * data.qty;
+          if (!ingredientSummary[key]) {
+            ingredientSummary[key] = { name: ing.name, amount: 0, uom: ing.uom || '' };
+          }
+          ingredientSummary[key].amount += totalAmount;
+        });
+      }
+    });
+
+    return { 
+      ingredients: Object.values(ingredientSummary).sort((a, b) => a.name.localeCompare(b.name)), 
+      hasAnyRecipe 
+    };
+  };
+
+  const getSkuIngredientSummary = () => {
+    const summary = getSummary();
+    const skuSummary: { sku: string; name: string; qty: number; ingredients: { name: string; amount: number; uom: string }[] }[] = [];
+    let hasAnyRecipe = false;
+
+    Object.entries(summary).forEach(([sku, data]) => {
+      const prod = products.find((p: any) => p.sku === sku);
+      const recipe = prod?.recipe || [];
+      if (recipe.length > 0) {
+        hasAnyRecipe = true;
+      }
+      const ingredients = recipe.map((ing: any) => ({
+        name: ing.name,
+        amount: (ing.amount || 0) * data.qty,
+        uom: ing.uom || ''
+      }));
+      skuSummary.push({
+        sku,
+        name: data.name,
+        qty: data.qty,
+        ingredients
+      });
+    });
+
+    return { skuSummary, hasAnyRecipe };
+  };
+
+  interface LabelCard {
+    id: string;
+    orderId: string;
+    customerName: string;
+    deliveryMode: string;
+    items: PreorderItem[];
+    partIndex: number;
+    totalParts: number;
+  }
+
+  const getLabelCards = (): LabelCard[] => {
+    const selectedPreorders = preorders.filter((p: Preorder) => selectedOrders.includes(p.id));
+    const cards: LabelCard[] = [];
+
+    for (const order of selectedPreorders) {
+      const items = order.items || [];
+      if (items.length === 0) continue;
+
+      const itemChunks: PreorderItem[][] = [];
+      const itemsPerCard = 8; // Max 8 items per card to fit perfectly and minimize split parts
+      for (let i = 0; i < items.length; i += itemsPerCard) {
+        itemChunks.push(items.slice(i, i + itemsPerCard));
+      }
+
+      const totalParts = itemChunks.length;
+      itemChunks.forEach((chunkItems, idx) => {
+        cards.push({
+          id: `${order.id}-part-${idx + 1}`,
+          orderId: order.id,
+          customerName: order.customerName,
+          deliveryMode: order.deliveryMode || 'Pick up',
+          items: chunkItems,
+          partIndex: idx + 1,
+          totalParts: totalParts
+        });
+      });
+    }
+
+    return cards;
+  };
+
+  const getChunkedLabels = () => {
+    const cards = getLabelCards();
+    const chunks: LabelCard[][] = [];
+    const chunkSize = 20;
+    for (let i = 0; i < cards.length; i += chunkSize) {
+      chunks.push(cards.slice(i, i + chunkSize));
+    }
+    return chunks;
+  };
+
+  const downloadLabels = async () => {
+    const chunks = getChunkedLabels();
+    if (chunks.length === 0) return;
+    
+    for (let i = 0; i < chunks.length; i++) {
+      const pageId = `labels-print-area-page-${i + 1}`;
+      const fileName = `Labels_${format(new Date(), 'ddMMyy')}_Page_${i + 1}`;
+      await downloadAsPNG(pageId, fileName);
+      if (i < chunks.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+  };
+
   const filteredPreorders = preorders.filter((p: Preorder) => {
     const term = searchTerm.toLowerCase();
     const matchesCustomer = (p.customerName || '').toLowerCase().includes(term);
@@ -353,7 +472,7 @@ export function OnlineView({ preorders, setPreorders, sales, products, setProduc
               
               <button 
                 disabled={selectedOrders.length === 0 || isDownloading}
-                onClick={() => downloadAsPNG('labels-print-area', `Labels_${format(new Date(), 'ddMMyy')}`)}
+                onClick={downloadLabels}
                 className="btn btn-secondary text-[10px] gap-1.5 py-1.5 whitespace-nowrap"
               >
                 {isDownloading ? <Clock className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />} Label
@@ -470,7 +589,7 @@ export function OnlineView({ preorders, setPreorders, sales, products, setProduc
                   {filteredPreorders.filter((p: Preorder) => p.milestone === m)
                     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()) // FIFO
                     .map((order: Preorder) => (
-                    <div 
+                    <motion.div 
                       layoutId={order.id}
                       key={order.id}
                       onClick={() => toggleSelect(order.id)}
@@ -569,7 +688,7 @@ export function OnlineView({ preorders, setPreorders, sales, products, setProduc
                           </div>
                         )}
                       </div>
-                    </div>
+                    </motion.div>
                   ))}
                 </div>
               </div>
@@ -598,51 +717,206 @@ export function OnlineView({ preorders, setPreorders, sales, products, setProduc
 
       {/* Hidden Print Areas (Rendered off-screen for capture) */}
       <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
-        {/* Summary Print Area */}
-        <div 
-          id="summary-print-area"
-          className="bg-white rounded p-8 sm:p-20 w-full max-w-[210mm] min-h-[297mm] relative font-sans text-zinc-900 border border-zinc-200 shadow-sm"
-        >
-          <div className="space-y-6">
-            <div className="text-center border-b-2 border-zinc-900 pb-6 mt-4 leading-relaxed">
-              <h2 className="text-3xl font-black uppercase tracking-normal">{shopInfo.name}</h2>
-              <div className="text-xl font-bold uppercase tracking-widest mt-1">Summary Produksi Pesanan</div>
-              <p className="text-zinc-500 font-mono mt-2 uppercase tracking-widest text-xs">Dibuat: {format(new Date(), 'dd MMMM yyyy HH:mm')}</p>
-              <p className="text-zinc-400 text-xs mt-1 font-bold">{selectedOrders.length} Pesanan Online Terpilih</p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 border-l-8 border-blue-600 pl-4 py-1">
-                <h3 className="font-black text-xl uppercase tracking-widest">Total Bahan / Produk Harus Disiapkan</h3>
+        {/* Summary Print Area Container */}
+        <div id="summary-print-area" className="space-y-6">
+          {/* Page 1: Summary Produksi */}
+          <div 
+            className="print-area-root bg-white p-5 w-[794px] min-h-[1123px] relative font-sans text-zinc-900 border border-zinc-200 shadow-sm flex flex-col justify-between"
+            style={{ boxSizing: 'border-box' }}
+          >
+            <div className="space-y-3.5">
+              <div className="text-center border-b border-zinc-300 pb-2.5 mt-0 leading-normal">
+                <h2 className="text-xl font-black uppercase tracking-tight text-zinc-900">{shopInfo.name}</h2>
+                <div className="text-sm font-bold uppercase tracking-wider mt-0.5">Summary Produksi Pesanan</div>
+                <p className="text-zinc-500 font-mono mt-0.5 uppercase tracking-wide text-[8.5px]">Dibuat: {format(new Date(), 'dd MMMM yyyy HH:mm')} | {selectedOrders.length} Pesanan Online Terpilih | Halaman 1</p>
               </div>
-              <div className="border-2 border-zinc-900 rounded-lg overflow-hidden">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="bg-zinc-900 text-white text-left">
-                      <th className="p-2 text-xs font-black uppercase tracking-widest border border-zinc-700">SKU</th>
-                      <th className="p-2 text-xs font-black uppercase tracking-widest border border-zinc-700">Nama Produk</th>
-                      <th className="p-2 text-xs font-black uppercase tracking-widest text-center border border-zinc-700">Qty</th>
-                      <th className="p-2 text-xs font-black uppercase tracking-widest text-center border border-zinc-700 w-16">Cek</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y-0">
-                    {Object.entries(getSummary()).map(([sku, data]) => (
-                      <tr key={sku} className="font-bold">
-                        <td className="p-2 font-mono text-zinc-500 text-xs border border-zinc-300">{sku}</td>
-                        <td className="p-2 text-sm uppercase break-words whitespace-normal text-left border border-zinc-300">{data.name}</td>
-                        <td className="p-2 text-center border border-zinc-300">{data.qty}</td>
-                        <td className="p-2 border border-zinc-300 w-16"></td>
+
+              {/* POINT 1: Summary of whole pending production need to produce */}
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 border-l-4 border-zinc-900 pl-2.5 py-0.5">
+                  <h3 className="font-black text-[11px] uppercase tracking-wider">Point 1: Total Bahan / Produk Harus Disiapkan</h3>
+                </div>
+                <div className="overflow-hidden rounded border border-zinc-400">
+                  <table className="w-full border-separate text-zinc-900" style={{ borderSpacing: 0 }}>
+                    <thead>
+                      <tr className="bg-zinc-900 text-white text-left">
+                        <th className="p-1 text-[9px] font-black uppercase tracking-wider border-r border-b border-zinc-400">SKU</th>
+                        <th className="p-1 text-[9px] font-black uppercase tracking-wider border-r border-b border-zinc-400">Nama Produk</th>
+                        <th className="p-1 text-[9px] font-black uppercase tracking-wider text-center border-r border-b border-zinc-400 w-20">Qty</th>
+                        <th className="p-1 text-[9px] font-black uppercase tracking-wider text-center border-r border-b border-zinc-400 w-12">Cek</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {Object.entries(getSummary()).map(([sku, data]) => (
+                        <tr key={sku} className="font-bold">
+                          <td className="p-1 font-mono text-zinc-500 text-[8.5px] border-r border-b border-zinc-300">{sku}</td>
+                          <td className="p-1 text-[8.5px] uppercase break-words whitespace-normal text-left border-r border-b border-zinc-300">{data.name}</td>
+                          <td className="p-1 text-center text-[8.5px] border-r border-b border-zinc-300">{data.qty}</td>
+                          <td className="p-1 border-r border-b border-zinc-300 w-12"></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* POINT 2: Summary of each customer order which products */}
+              <div className="space-y-1.5 pt-1.5">
+                <div className="flex items-center gap-2 border-l-4 border-zinc-900 pl-2.5 py-0.5">
+                  <h3 className="font-black text-[11px] uppercase tracking-wider">Point 2: Kategorisasi Pesanan per Pelanggan</h3>
+                </div>
+                <div className="overflow-hidden rounded border border-zinc-400">
+                  <table className="w-full border-separate text-zinc-900" style={{ borderSpacing: 0 }}>
+                    <thead>
+                      <tr className="bg-zinc-900 text-white text-left">
+                        <th className="p-1 text-[9px] font-black uppercase tracking-wider border-r border-b border-zinc-400 w-24">No. Pesanan</th>
+                        <th className="p-1 text-[9px] font-black uppercase tracking-wider border-r border-b border-zinc-400 w-32">Pelanggan</th>
+                        <th className="p-1 text-[9px] font-black uppercase tracking-wider border-r border-b border-zinc-400">Produk (SKU)</th>
+                        <th className="p-1 text-[9px] font-black uppercase tracking-wider text-center border-r border-b border-zinc-400 w-16">Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preorders.filter((p: Preorder) => selectedOrders.includes(p.id)).map((p: Preorder) => (
+                        p.items.map((item, idx) => (
+                          <tr key={`${p.id}-${item.sku}-${idx}`} className="font-bold">
+                            {idx === 0 ? (
+                              <td className="p-1 font-mono text-[8.5px] border-r border-b border-zinc-300 bg-zinc-50 text-zinc-800 leading-tight align-top" rowSpan={p.items.length}>
+                                {p.id}
+                              </td>
+                            ) : null}
+                            {idx === 0 ? (
+                              <td className="p-1 text-[8.5px] uppercase border-r border-b border-zinc-300 bg-zinc-50 text-zinc-900 leading-tight break-words max-w-[120px] align-top" rowSpan={p.items.length}>
+                                {p.customerName}
+                              </td>
+                            ) : null}
+                            <td className="p-1 text-[8.5px] uppercase border-r border-b border-zinc-300 text-left leading-normal">
+                              {item.name} <span className="text-zinc-500 font-mono text-[7.5px]">({item.sku})</span>
+                            </td>
+                            <td className="p-1 text-center text-[8.5px] border-r border-b border-zinc-300 font-mono">
+                              {item.quantity}
+                            </td>
+                          </tr>
+                        ))
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
 
-            <div className="mt-8 border-t pt-6 flex justify-between items-end text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
-              <div className="space-y-4">
+            <div className="pt-3.5 border-t border-zinc-300 flex justify-between items-end text-[8px] font-black uppercase tracking-wider text-zinc-400">
+              <div className="space-y-1.5">
                 <div>Bagian Produksi:</div>
-                <div className="h-12 w-40 border-b-2 border-zinc-900" />
+                <div className="h-7 w-32 border-b border-zinc-900" />
+              </div>
+              <div className="text-right">
+                Dihasilkan oleh Sistem UMKM Pintar
+              </div>
+            </div>
+          </div>
+
+          {/* Page 2: Kebutuhan Bahan Baku */}
+          <div 
+            className="print-area-root bg-white p-5 w-[794px] min-h-[1123px] relative font-sans text-zinc-900 border border-zinc-200 shadow-sm flex flex-col justify-between"
+            style={{ boxSizing: 'border-box' }}
+          >
+            <div className="space-y-4">
+              <div className="text-center border-b border-zinc-300 pb-2.5 mt-0 leading-normal">
+                <h2 className="text-xl font-black uppercase tracking-tight text-zinc-900">{shopInfo.name}</h2>
+                <div className="text-sm font-bold uppercase tracking-wider mt-0.5">Kebutuhan Bahan Baku Produksi</div>
+                <p className="text-zinc-500 font-mono mt-0.5 uppercase tracking-wide text-[8.5px]">Dibuat: {format(new Date(), 'dd MMMM yyyy HH:mm')} | Halaman 2</p>
+              </div>
+
+              {!getSkuIngredientSummary().hasAnyRecipe ? (
+                <div className="border border-dashed border-zinc-300 rounded p-12 text-center my-8">
+                  <p className="text-zinc-500 font-bold uppercase tracking-wide text-xs">
+                    Resep belum di set di bagian pengaturan
+                  </p>
+                  <p className="text-zinc-400 text-[10px] mt-1 font-semibold">
+                    Silakan masuk ke menu Pengaturan untuk menghubungkan SKU produk dengan bahan baku.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Point 1: Requirement for total per SKU */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 border-l-4 border-zinc-900 pl-2.5 py-0.5">
+                      <h3 className="font-black text-[10px] uppercase tracking-wider">Point 1: Rincian Kebutuhan Bahan Baku per SKU</h3>
+                    </div>
+                    <div className="space-y-2.5">
+                      {getSkuIngredientSummary().skuSummary.map((item, idx) => (
+                        <div key={item.sku} className="border border-zinc-300 rounded overflow-hidden">
+                          <div className="bg-zinc-100 px-2 py-1 text-[8.5px] font-black uppercase tracking-wider flex justify-between border-b border-zinc-300">
+                            <span>{item.name} ({item.sku})</span>
+                            <span className="text-blue-700 font-mono">Jumlah Produksi: {item.qty} Pcs</span>
+                          </div>
+                          {item.ingredients.length === 0 ? (
+                            <div className="p-2 text-[8px] italic text-zinc-400 font-bold uppercase tracking-wide">
+                              Resep belum di set di bagian pengaturan
+                            </div>
+                          ) : (
+                            <table className="w-full border-separate text-zinc-900" style={{ borderSpacing: 0 }}>
+                              <thead>
+                                <tr className="bg-zinc-50 text-left text-[8px] font-bold uppercase tracking-wider text-zinc-500">
+                                  <th className="p-1 border-r border-b border-zinc-200">Nama Bahan Baku</th>
+                                  <th className="p-1 text-center border-r border-b border-zinc-200 w-24">Kebutuhan Bahan</th>
+                                  <th className="p-1 text-center border-b border-zinc-200 w-20">Satuan (UOM)</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {item.ingredients.map((ing, ingIdx) => (
+                                  <tr key={ingIdx} className="font-bold text-[8.5px]">
+                                    <td className="p-1 border-r border-b border-zinc-200 uppercase text-left">{ing.name}</td>
+                                    <td className="p-1 text-center border-r border-b border-zinc-200 font-mono text-blue-600">
+                                      {ing.amount % 1 === 0 ? ing.amount : ing.amount.toFixed(2)}
+                                    </td>
+                                    <td className="p-1 text-center border-b border-zinc-200 uppercase text-zinc-500">{ing.uom}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Point 2: Total requirement for whole batch production */}
+                  <div className="space-y-1.5 pt-1.5">
+                    <div className="flex items-center gap-2 border-l-4 border-zinc-900 pl-2.5 py-0.5">
+                      <h3 className="font-black text-[10px] uppercase tracking-wider">Point 2: Total Akumulasi Kebutuhan Seluruh Batch</h3>
+                    </div>
+                    <div className="overflow-hidden rounded border border-zinc-400">
+                      <table className="w-full border-separate text-zinc-900" style={{ borderSpacing: 0 }}>
+                        <thead>
+                          <tr className="bg-zinc-900 text-white text-left">
+                            <th className="p-1 text-[9px] font-black uppercase tracking-wider border-r border-b border-zinc-400 w-12 text-center">No</th>
+                            <th className="p-1 text-[9px] font-black uppercase tracking-wider border-r border-b border-zinc-400">Nama Bahan Baku</th>
+                            <th className="p-1 text-[9px] font-black uppercase tracking-wider text-center border-r border-b border-zinc-400 w-24">Jumlah</th>
+                            <th className="p-1 text-[9px] font-black uppercase tracking-wider text-center border-r border-b border-zinc-400 w-20">Satuan (UOM)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {getIngredientSummary().ingredients.map((ing, idx) => (
+                            <tr key={idx} className="font-bold">
+                              <td className="p-1 text-center text-[8.5px] border-r border-b border-zinc-300">{idx + 1}</td>
+                              <td className="p-1 text-[8.5px] uppercase border-r border-b border-zinc-300 text-left">{ing.name}</td>
+                              <td className="p-1 text-center text-[8.5px] border-r border-b border-zinc-300 font-mono text-blue-600">{ing.amount % 1 === 0 ? ing.amount : ing.amount.toFixed(2)}</td>
+                              <td className="p-1 text-center text-[8.5px] border-r border-b border-zinc-300 uppercase">{ing.uom}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-3.5 border-t border-zinc-300 flex justify-between items-end text-[8px] font-black uppercase tracking-wider text-zinc-400">
+              <div className="space-y-1.5">
+                <div>Bagian Gudang/Dapur:</div>
+                <div className="h-7 w-32 border-b border-zinc-900" />
               </div>
               <div className="text-right">
                 Dihasilkan oleh Sistem UMKM Pintar
@@ -651,57 +925,76 @@ export function OnlineView({ preorders, setPreorders, sales, products, setProduc
           </div>
         </div>
 
-        {/* Label Print Area */}
-        <div 
-          id="labels-print-area"
-          className="bg-white rounded p-3 sm:p-5 w-full max-w-4xl relative shadow-sm"
-        >
-          <div className="grid grid-cols-2 gap-4 justify-center">
-            {preorders.filter((p: Preorder) => selectedOrders.includes(p.id)).map(order => (
-              <div key={order.id} className="bg-white p-3 sm:p-5 w-full border-2 border-zinc-900 text-zinc-900 flex flex-col gap-2 font-sans">
-                <div className="flex justify-between items-start border-b-4 border-zinc-900 pb-3">
-                  <div>
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 leading-relaxed">Nomor Pesanan</div>
-                    <div className="font-black text-2xl leading-none tracking-tighter break-words">{order.id}</div>
+        {/* Label Print Area (Chunked A4 4x5 layouts) */}
+        {getChunkedLabels().map((chunk, pageIndex) => (
+          <div 
+            key={pageIndex}
+            id={`labels-print-area-page-${pageIndex + 1}`}
+            className="print-area-root bg-white p-4 w-[794px] h-[1123px] relative font-sans text-zinc-900 border border-zinc-200 shadow-sm grid grid-cols-4 grid-rows-5 gap-3"
+            style={{ boxSizing: 'border-box' }}
+          >
+            {chunk.map((card: LabelCard) => (
+              <div 
+                key={card.id} 
+                className="bg-white p-2.5 pb-2 border border-zinc-900 text-zinc-900 flex flex-col justify-between font-sans overflow-hidden h-full rounded shadow-sm"
+                style={{ boxSizing: 'border-box' }}
+              >
+                {/* Upper content group */}
+                <div className="flex flex-col gap-1 min-h-0">
+                  {/* Top bar: Order ID & Delivery */}
+                  <div className="flex justify-between items-center border-b border-zinc-200 pb-1 shrink-0">
+                    <div>
+                      <div className="text-[5.5px] font-black uppercase tracking-wider text-zinc-400 leading-tight">Order ID</div>
+                      <div className="font-bold text-[8px] leading-tight font-mono tracking-tight text-zinc-900 mt-0.5">{card.orderId}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-black text-[8px] text-zinc-900 uppercase tracking-tight leading-tight">{card.deliveryMode}</div>
+                    </div>
                   </div>
-                  <div className="text-right font-mono">
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 leading-relaxed">Kurir</div>
-                    <div className="font-black text-lg text-zinc-900 break-words">{order.deliveryMode.toUpperCase()}</div>
+
+                  {/* Customer Block */}
+                  <div className="bg-zinc-950 text-white px-1.5 py-0.5 rounded-sm text-center my-0.5 shrink-0 flex items-start justify-center min-h-[18px]">
+                    <div className="text-[7.5px] font-black uppercase tracking-tight truncate w-full leading-tight text-center pt-0.5" title={card.customerName}>
+                      {card.customerName}{card.totalParts > 1 ? ` (${card.partIndex}/${card.totalParts})` : ''}
+                    </div>
                   </div>
-                </div>
-                
-                <div className="space-y-1 bg-zinc-900 text-white p-3 rounded-lg">
-                  <div className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 leading-relaxed">Nama Pelanggan</div>
-                  <div className="text-2xl font-black uppercase break-words whitespace-normal">{order.customerName}</div>
+
+                  {/* Items Table (compact, no bubbles) */}
+                  <div 
+                    className="overflow-y-auto min-h-0 py-0.5 max-h-[135px]"
+                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                  >
+                    <table className="w-full text-[8px] border-collapse">
+                      <tbody>
+                        {card.items.map((item, idx) => (
+                          <tr key={idx} className="border-b border-zinc-100 last:border-none">
+                            <td className="py-0.5 pr-1 font-bold text-zinc-900 uppercase truncate max-w-[125px] leading-tight" title={item.name}>
+                              {item.name}
+                            </td>
+                            <td className="py-0.5 pl-1 font-mono font-black text-right text-zinc-900 w-6 shrink-0 leading-tight">
+                              x{item.quantity}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
 
-                <div className="space-y-2 flex-1">
-                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 leading-relaxed">Daftar Item:</div>
-                  <div className="space-y-1 border-y-2 border-dashed border-zinc-200 py-3">
-                    {order.items.map((item, idx) => (
-                      <div key={idx} className="flex justify-between items-center bg-zinc-50 p-1.5 rounded-lg border border-zinc-100">
-                        <span className="font-black uppercase text-sm break-words whitespace-normal pr-2 leading-tight">{item.name}</span>
-                        <span className="bg-zinc-900 text-white px-3 py-0.5 rounded-full font-black text-lg shrink-0 leading-none">{item.quantity}</span>
-                      </div>
-                    ))}
+                {/* Footer */}
+                <div className="pt-1 border-t border-dashed border-zinc-200 flex items-center justify-center shrink-0">
+                  <div className="text-[7.5px] font-black uppercase tracking-tight text-zinc-800 truncate w-full leading-none text-center">
+                    {shopInfo.name}
                   </div>
-                </div>
-
-                <div className="mt-3 flex items-center justify-between gap-4 p-3 border-t-2 border-zinc-900">
-                   <div className="h-8 w-40 flex items-center justify-center gap-[1px] opacity-40">
-                     {Array.from({length: 40}).map((_, i) => (
-                       <div key={i} className="bg-zinc-900" style={{ width: Math.random() > 0.5 ? '3px' : '1px', height: '100%' }} />
-                     ))}
-                   </div>
-                   <div className="text-right">
-                     <div className="text-[8px] font-black text-zinc-400 uppercase tracking-widest leading-relaxed">Powered by</div>
-                     <div className="text-[10px] font-black uppercase tracking-tight">{shopInfo.name}</div>
-                   </div>
                 </div>
               </div>
             ))}
+            {/* Fill the rest of grid cells with empty placeholders to keep grid structured if less than 20 labels */}
+            {chunk.length < 20 && Array.from({ length: 20 - chunk.length }).map((_, i) => (
+              <div key={`empty-${i}`} className="bg-white" />
+            ))}
           </div>
-        </div>
+        ))}
       </div>
 
       {/* Receipt Download Modal for Online */}
@@ -737,17 +1030,19 @@ export function OnlineView({ preorders, setPreorders, sales, products, setProduc
                     </div>
                 ))}
               </div>
-              <div className="pt-2 space-y-1 text-xs">
-                <div className="flex justify-between font-black text-sm">
+              <div className="pt-2 space-y-1.5 text-xs">
+                <div className="flex justify-between text-[11px] text-zinc-500 font-bold">
+                  <span>SUBTOTAL</span>
+                  <span>{formatCurrency(selectedOrderForReceipt.total)}</span>
+                </div>
+                <div className="flex justify-between text-[11px] text-zinc-500 font-bold">
+                  <span>ONGKIR ({selectedOrderForReceipt.deliveryMode || 'Kirim'})</span>
+                  <span>{formatCurrency(selectedOrderForReceipt.shippingCost)}</span>
+                </div>
+                <div className="flex justify-between font-black text-sm pt-1.5 border-t">
                   <span>TOTAL</span>
                   <span>{formatCurrency(selectedOrderForReceipt.total + selectedOrderForReceipt.shippingCost)}</span>
                 </div>
-                {selectedOrderForReceipt.shippingCost > 0 && (
-                  <div className="flex justify-between text-[10px] text-zinc-500">
-                    <span>ONGKIR ({selectedOrderForReceipt.deliveryMode})</span>
-                    <span>{formatCurrency(selectedOrderForReceipt.shippingCost)}</span>
-                  </div>
-                )}
               </div>
                <div className="pt-4 border-t text-center text-zinc-400 text-[10px] italic leading-tight">
                  <p>{shopInfo.message}</p>
@@ -806,17 +1101,19 @@ export function OnlineView({ preorders, setPreorders, sales, products, setProduc
                  </div>
                ))}
              </div>
-             <div className="pt-2 space-y-1 text-xs">
-               <div className="flex justify-between font-black text-sm">
+             <div className="pt-2 space-y-1.5 text-xs">
+               <div className="flex justify-between text-[11px] text-zinc-500 font-bold">
+                 <span>SUBTOTAL</span>
+                 <span>{formatCurrency(downloadingReceiptOrder.total)}</span>
+               </div>
+               <div className="flex justify-between text-[11px] text-zinc-500 font-bold">
+                 <span>ONGKIR ({downloadingReceiptOrder.deliveryMode || 'Kirim'})</span>
+                 <span>{formatCurrency(downloadingReceiptOrder.shippingCost)}</span>
+               </div>
+               <div className="flex justify-between font-black text-sm pt-1.5 border-t">
                  <span>TOTAL</span>
                  <span>{formatCurrency(downloadingReceiptOrder.total + downloadingReceiptOrder.shippingCost)}</span>
                </div>
-               {downloadingReceiptOrder.shippingCost > 0 && (
-                 <div className="flex justify-between text-[10px] text-zinc-500">
-                   <span>ONGKIR ({downloadingReceiptOrder.deliveryMode})</span>
-                   <span>{formatCurrency(downloadingReceiptOrder.shippingCost)}</span>
-                 </div>
-               )}
              </div>
              <div className="pt-4 border-t text-center text-zinc-400 text-[10px] italic leading-tight">
                <p>{shopInfo.message}</p>

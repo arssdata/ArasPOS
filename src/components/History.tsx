@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Trash2, Printer, Download, Save, Filter, Calendar, ChevronLeft, ChevronRight, X, Clock } from 'lucide-react';
 import { formatCurrency, cn, downloadCSV } from '../lib/utils';
-import { Sale, ShopInfo } from '../types';
+import { Sale, ShopInfo, CartItem } from '../types';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, addDays, addWeeks, addMonths } from 'date-fns';
-import html2canvas from 'html2canvas';
+import html2canvas from 'html2canvas-pro';
 import jsPDF from 'jspdf';
 
 export function HistoryView({ sales, shopInfo, downloadAsPNG, isDownloading }: any) {
