@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, ChangeEvent, FormEvent } from 
 import { 
   LayoutDashboard, Store, Package, History, Settings, LogOut, Menu, X, Plus, Search, Trash2, 
   ShoppingCart, Printer, CheckCircle2, ChevronRight, ChevronLeft, CreditCard, Wallet, Banknote, 
-  ClipboardList, PackagePlus, Truck, CheckCircle, Download, Save, QrCode, Coffee, Layout, BarChart3, TrendingUp, TrendingDown, ClipboardCheck, Utensils, Clock, ArrowRight, RotateCcw, Calendar, Filter
+  ClipboardList, PackagePlus, Truck, CheckCircle, Download, Save, QrCode, Coffee, Layout, BarChart3, TrendingUp, TrendingDown, ClipboardCheck, Utensils, Clock, ArrowRight, RotateCcw, Calendar, Filter, Users
 } from 'lucide-react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, 
@@ -16,20 +16,20 @@ import { InventoryView } from './components/Inventory';
 import { OnlineView } from './components/Online';
 import { HistoryView } from './components/History';
 import { SettingsView } from './components/Settings';
-import { KitchenMonitorView } from './components/Kitchen';
+import { CustomersView } from './components/Customers';
 import { formatCurrency, generateId, generateOrderCode, cn } from './lib/utils';
 import html2canvas from 'html2canvas-pro';
 import jsPDF from 'jspdf';
 import { format, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths, addMonths, isSameMonth, subDays, addDays, startOfDay, endOfDay, isWithinInterval, startOfWeek, endOfWeek, eachDayOfInterval, eachWeekOfInterval, isSameWeek, addWeeks, subWeeks } from 'date-fns';
-import { Product, CartItem, Sale, ActiveOrder, ShopInfo, Preorder, View, Milestone } from './types';
+import { Product, CartItem, Sale, ShopInfo, Preorder, View, Milestone, Customer } from './types';
 import { collection, onSnapshot, doc, setDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from './lib/firebase';
 
 
 // --- MOCK DATA ---
 const INITIAL_PRODUCTS: Product[] = [
-  { id: '1', name: 'Kopi Gayo 250g', price: 65000, cost: 45000, stock: 20, reserved: 0, category: 'Beverage', sku: 'KPY-001' },
   { id: '2', name: 'Gula Aren 500g', price: 15000, cost: 10000, stock: 50, reserved: 0, category: 'Staple', sku: 'GLA-002' },
+  { id: '1', name: 'Kopi Gayo 250g', price: 65000, cost: 45000, stock: 20, reserved: 0, category: 'Beverage', sku: 'KPY-001' },
   { id: '3', name: 'Susu UHT 1L', price: 18000, cost: 14000, stock: 15, reserved: 0, category: 'Beverage', sku: 'SSU-003' },
 ];
 
@@ -40,6 +40,7 @@ export default function App() {
   const [products, setProductsState] = useState<Product[]>(INITIAL_PRODUCTS);
   const [sales, setSalesState] = useState<Sale[]>([]);
   const [preorders, setPreordersState] = useState<Preorder[]>([]);
+  const [customers, setCustomersState] = useState<Customer[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
 
   // Background Firestore sync helpers
@@ -106,26 +107,6 @@ export default function App() {
     }
   };
 
-  const syncActiveOrdersToFirestore = async (next: ActiveOrder[]) => {
-    try {
-      const batch = writeBatch(db);
-      const snapshot = await getDocs(collection(db, 'activeOrders'));
-      const existingIds = snapshot.docs.map(d => d.id);
-      const nextIds = next.map(a => a.id);
-      
-      existingIds.forEach(id => {
-        if (!nextIds.includes(id)) {
-          batch.delete(doc(db, 'activeOrders', id));
-        }
-      });
-      next.forEach(a => {
-        batch.set(doc(db, 'activeOrders', a.id), a);
-      });
-      await batch.commit();
-    } catch (err) {
-      console.error("Failed to sync activeOrders:", err);
-    }
-  };
 
   const syncShopInfoToFirestore = async (next: ShopInfo) => {
     try {
@@ -135,9 +116,31 @@ export default function App() {
     }
   };
 
+  const syncCustomersToFirestore = async (next: Customer[]) => {
+    try {
+      const batch = writeBatch(db);
+      const snapshot = await getDocs(collection(db, 'customers'));
+      const existingIds = snapshot.docs.map(d => d.id);
+      const nextIds = next.map(c => c.id);
+      
+      existingIds.forEach(id => {
+        if (!nextIds.includes(id)) {
+          batch.delete(doc(db, 'customers', id));
+        }
+      });
+      next.forEach(c => {
+        batch.set(doc(db, 'customers', c.id), c);
+      });
+      await batch.commit();
+    } catch (err) {
+      console.error("Failed to sync customers:", err);
+    }
+  };
+
   const setProducts = useCallback((newProductsOrUpdater: Product[] | ((prev: Product[]) => Product[])) => {
     setProductsState((prev) => {
-      const next = typeof newProductsOrUpdater === 'function' ? newProductsOrUpdater(prev) : newProductsOrUpdater;
+      const rawNext = typeof newProductsOrUpdater === 'function' ? newProductsOrUpdater(prev) : newProductsOrUpdater;
+      const next = [...rawNext].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'id', { sensitivity: 'base' }));
       syncProductsToFirestore(next);
       return next;
     });
@@ -155,6 +158,14 @@ export default function App() {
     setPreordersState((prev) => {
       const next = typeof newPreordersOrUpdater === 'function' ? newPreordersOrUpdater(prev) : newPreordersOrUpdater;
       syncPreordersToFirestore(next);
+      return next;
+    });
+  }, []);
+
+  const setCustomers = useCallback((newCustomersOrUpdater: Customer[] | ((prev: Customer[]) => Customer[])) => {
+    setCustomersState((prev) => {
+      const next = typeof newCustomersOrUpdater === 'function' ? newCustomersOrUpdater(prev) : newCustomersOrUpdater;
+      syncCustomersToFirestore(next);
       return next;
     });
   }, []);
@@ -186,9 +197,7 @@ export default function App() {
     }
 
     try {
-      // Alert untuk memastikan tombol bekerja
       console.log(`Starting download for ${elementId}...`);
-      
       await new Promise(resolve => setTimeout(resolve, 300));
       
       const canvas = await html2canvas(element, {
@@ -197,6 +206,34 @@ export default function App() {
         logging: true,
         backgroundColor: '#ffffff',
         onclone: (clonedDoc) => {
+          // Force target element in cloned document to be fully visible and explicitly formatted
+          const clonedTarget = clonedDoc.getElementById(elementId);
+          if (clonedTarget) {
+            clonedTarget.style.position = 'static';
+            clonedTarget.style.opacity = '1';
+            clonedTarget.style.visibility = 'visible';
+            clonedTarget.style.zIndex = '99999';
+            clonedTarget.style.backgroundColor = '#ffffff';
+            clonedTarget.style.color = '#18181b';
+            clonedTarget.style.boxSizing = 'border-box';
+            if (elementId.includes('labels')) {
+              clonedTarget.style.display = 'block';
+              clonedTarget.style.width = '794px';
+              clonedTarget.style.height = '1123px';
+              clonedTarget.style.padding = '16px';
+            } else if (elementId.includes('receipt') || elementId.includes('ticket')) {
+              clonedTarget.style.display = 'block';
+              clonedTarget.style.width = '384px';
+              clonedTarget.style.minWidth = '384px';
+              clonedTarget.style.maxWidth = '384px';
+              clonedTarget.style.padding = '24px';
+              clonedTarget.style.margin = '0 auto';
+            } else {
+              const compDisplay = window.getComputedStyle(element).display;
+              clonedTarget.style.display = (compDisplay && compDisplay !== 'none') ? compDisplay : 'block';
+            }
+          }
+
           // Robust cleanup for oklch and oklab colors across style tags, inline styles, and stylesheet rules
           try {
             const styles = clonedDoc.querySelectorAll('style');
@@ -271,7 +308,75 @@ export default function App() {
               color: rgb(9, 9, 11) !important;
             }
             
+            /* Layout & Flexbox & Grid rules override for mobile html2canvas compatibility */
+            .labels-grid { display: block !important; }
+            .labels-grid > div {
+              float: left !important;
+              margin-right: 12px !important;
+              margin-bottom: 12px !important;
+            }
+            .labels-grid > div:nth-child(4n) {
+              margin-right: 0 !important;
+            }
+            .flex { display: flex !important; }
+            .flex-col { flex-direction: column !important; }
+            .flex-1 { flex: 1 1 0% !important; }
+            .justify-between { justify-content: space-between !important; }
+            .justify-center { justify-content: center !important; }
+            .items-center { align-items: center !important; }
+            .items-start { align-items: flex-start !important; }
+            .gap-1 { gap: 0.25rem !important; }
+            .gap-1\\.5 { gap: 0.375rem !important; }
+            .gap-2 { gap: 0.5rem !important; }
+            .gap-3 { gap: 0.75rem !important; }
+            .gap-4 { gap: 1rem !important; }
+            .space-y-0\\.5 > * + * { margin-top: 0.125rem !important; }
+            .space-y-1 > * + * { margin-top: 0.25rem !important; }
+            .space-y-1\\.5 > * + * { margin-top: 0.375rem !important; }
+            .space-y-2 > * + * { margin-top: 0.5rem !important; }
+            .space-y-3 > * + * { margin-top: 0.75rem !important; }
+            .space-y-4 > * + * { margin-top: 1rem !important; }
+            .space-y-6 > * + * { margin-top: 1.5rem !important; }
+
+            /* Text & Typography */
+            .text-center { text-align: center !important; }
+            .text-right { text-align: right !important; }
+            .text-left { text-align: left !important; }
+            .font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important; }
+            .font-sans { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important; }
+            .font-normal { font-weight: 400 !important; }
+            .font-medium { font-weight: 500 !important; }
+            .font-semibold { font-weight: 600 !important; }
+            .font-bold { font-weight: 700 !important; }
+            .font-black { font-weight: 900 !important; }
+            .uppercase { text-transform: uppercase !important; }
+            .italic { font-style: italic !important; }
+            .not-italic { font-style: normal !important; }
+            .text-\\[10px\\] { font-size: 10px !important; line-height: 14px !important; }
+            .text-\\[11px\\] { font-size: 11px !important; line-height: 15px !important; }
+            .text-xs { font-size: 12px !important; line-height: 16px !important; }
+            .text-sm { font-size: 14px !important; line-height: 20px !important; }
+            .text-base { font-size: 16px !important; line-height: 24px !important; }
+            .text-lg { font-size: 18px !important; line-height: 28px !important; }
+            .text-xl { font-size: 20px !important; line-height: 28px !important; }
+            .text-2xl { font-size: 24px !important; line-height: 32px !important; }
+            .leading-tight { line-height: 1.25 !important; }
+            .leading-relaxed { line-height: 1.625 !important; }
+
+            /* Borders & Lines */
+            .border { border-style: solid !important; border-width: 1px !important; border-color: rgb(228, 228, 231) !important; }
+            .border-t { border-top-style: solid !important; border-top-width: 1px !important; border-top-color: rgb(228, 228, 231) !important; }
+            .border-b { border-bottom-style: solid !important; border-bottom-width: 1px !important; border-bottom-color: rgb(228, 228, 231) !important; }
+            .border-l { border-left-style: solid !important; border-left-width: 1px !important; border-left-color: rgb(228, 228, 231) !important; }
+            .border-r { border-right-style: solid !important; border-right-width: 1px !important; border-right-color: rgb(228, 228, 231) !important; }
+            .border-2 { border-width: 2px !important; }
+            .border-t-2 { border-top-width: 2px !important; }
+            .border-b-2 { border-bottom-width: 2px !important; }
+            .border-dotted { border-style: dotted !important; }
+            .border-dashed { border-style: dashed !important; }
+
             /* Background styles */
+            .bg-white { background-color: rgb(255, 255, 255) !important; }
             .bg-zinc-950 {
               background-color: rgb(9, 9, 11) !important;
               color: rgb(255, 255, 255) !important;
@@ -291,58 +396,39 @@ export default function App() {
             .bg-zinc-50 {
               background-color: rgb(250, 250, 250) !important;
             }
-            .bg-zinc-50\\/50 {
-              background-color: rgb(252, 252, 253) !important;
-            }
             .bg-blue-50 {
               background-color: rgb(239, 246, 255) !important;
             }
             .bg-green-50 {
               background-color: rgb(240, 253, 244) !important;
             }
-            .bg-zinc-200 {
-              background-color: rgb(228, 228, 231) !important;
-            }
             
             /* Text colors */
-            .text-white {
-              color: rgb(255, 255, 255) !important;
-            }
-            .text-zinc-900, .text-black, .text-zinc-800, .text-zinc-850 {
-              color: rgb(9, 9, 11) !important;
-            }
-            .text-zinc-500 {
-              color: rgb(113, 113, 122) !important;
-            }
-            .text-zinc-400 {
-              color: rgb(161, 161, 170) !important;
-            }
-            .text-blue-600 {
-              color: rgb(37, 99, 235) !important;
-            }
-            .text-green-700, .text-green-600 {
-              color: rgb(22, 163, 74) !important;
-            }
+            .text-white { color: rgb(255, 255, 255) !important; }
+            .text-zinc-900, .text-black, .text-zinc-800, .text-zinc-850 { color: rgb(9, 9, 11) !important; }
+            .text-zinc-500 { color: rgb(113, 113, 122) !important; }
+            .text-zinc-400 { color: rgb(161, 161, 170) !important; }
+            .text-blue-600 { color: rgb(37, 99, 235) !important; }
+            .text-green-700, .text-green-600 { color: rgb(22, 163, 74) !important; }
             
             /* Border colors and styles */
-            .border, .border-t, .border-b, .border-l, .border-r {
-              border-color: rgb(212, 212, 216) !important; /* fallback border-zinc-300 */
-            }
-            .border-zinc-900, .border-black {
-              border-color: rgb(9, 9, 11) !important;
-            }
-            .border-zinc-400 {
-              border-color: rgb(161, 161, 170) !important;
-            }
-            .border-zinc-300 {
-              border-color: rgb(212, 212, 216) !important;
-            }
-            .border-zinc-200, .border-zinc-200\\/60 {
-              border-color: rgb(228, 228, 231) !important;
-            }
-            .border-dashed {
-              border-style: dashed !important;
-            }
+            .border-zinc-900, .border-black { border-color: rgb(9, 9, 11) !important; }
+            .border-zinc-400 { border-color: rgb(161, 161, 170) !important; }
+            .border-zinc-300 { border-color: rgb(212, 212, 216) !important; }
+            .border-zinc-200 { border-color: rgb(228, 228, 231) !important; }
+
+            /* Utilities */
+            .rounded { border-radius: 0.25rem !important; }
+            .rounded-lg { border-radius: 0.5rem !important; }
+            .rounded-xl { border-radius: 0.75rem !important; }
+            .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important; }
+            .w-full { width: 100% !important; }
+            .w-48 { width: 12rem !important; }
+            .h-48 { height: 12rem !important; }
+            .object-contain { object-fit: contain !important; }
+            .whitespace-nowrap { white-space: nowrap !important; }
+            .truncate { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+            .shrink-0 { flex-shrink: 0 !important; }
           `;
           clonedDoc.head.appendChild(style);
         }
@@ -359,7 +445,6 @@ export default function App() {
          link.download = `${fileName}.png`;
         link.href = url;
         
-        // Tambahkan ke body untuk kompatibilitas browser mobile tertentu
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -373,7 +458,6 @@ export default function App() {
       alert(`Terjadi kesalahan: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setIsDownloading(false);
     } finally {
-      // Restore original styles
       try {
         originalStyles.forEach((originalContent, styleTag) => {
           styleTag.textContent = originalContent;
@@ -393,7 +477,6 @@ export default function App() {
 
     setIsDownloading(true);
 
-    // Temporarily replace oklch/oklab in original document style tags to prevent html2canvas parsing errors
     const originalStyles = new Map<HTMLStyleElement, string>();
     try {
       const styleTags = document.querySelectorAll('style');
@@ -418,7 +501,25 @@ export default function App() {
         logging: false,
         backgroundColor: '#ffffff',
         onclone: (clonedDoc) => {
-          // Robust cleanup for oklch and oklab colors across style tags, inline styles, and stylesheet rules
+          const clonedTarget = clonedDoc.getElementById(elementId);
+          if (clonedTarget) {
+            clonedTarget.style.position = 'static';
+            clonedTarget.style.opacity = '1';
+            clonedTarget.style.visibility = 'visible';
+            clonedTarget.style.display = 'block';
+            clonedTarget.style.zIndex = '99999';
+            clonedTarget.style.backgroundColor = '#ffffff';
+            clonedTarget.style.color = '#18181b';
+            clonedTarget.style.boxSizing = 'border-box';
+            if (elementId.includes('receipt') || elementId.includes('ticket')) {
+              clonedTarget.style.width = '384px';
+              clonedTarget.style.minWidth = '384px';
+              clonedTarget.style.maxWidth = '384px';
+              clonedTarget.style.padding = '24px';
+              clonedTarget.style.margin = '0 auto';
+            }
+          }
+
           try {
             const styles = clonedDoc.querySelectorAll('style');
             styles.forEach((s) => {
@@ -482,7 +583,6 @@ export default function App() {
 
           const style = clonedDoc.createElement('style');
           style.innerHTML = `
-            /* Base reset for high-fidelity captured documents */
             body {
               background-color: rgb(255, 255, 255) !important;
               color: rgb(9, 9, 11) !important;
@@ -491,79 +591,60 @@ export default function App() {
               background-color: rgb(255, 255, 255) !important;
               color: rgb(9, 9, 11) !important;
             }
-            
-            /* Background styles */
-            .bg-zinc-950 {
-              background-color: rgb(9, 9, 11) !important;
-              color: rgb(255, 255, 255) !important;
-            }
-            .bg-zinc-950 * {
-              color: rgb(255, 255, 255) !important;
-            }
-            .bg-zinc-900, .bg-black {
-              background-color: rgb(24, 24, 27) !important;
-            }
-            .bg-zinc-900 *, .bg-black * {
-              color: rgb(255, 255, 255) !important;
-            }
-            .bg-zinc-100 {
-              background-color: rgb(244, 244, 245) !important;
-            }
-            .bg-zinc-50 {
-              background-color: rgb(250, 250, 250) !important;
-            }
-            .bg-zinc-50\\/50 {
-              background-color: rgb(252, 252, 253) !important;
-            }
-            .bg-blue-50 {
-              background-color: rgb(239, 246, 255) !important;
-            }
-            .bg-green-50 {
-              background-color: rgb(240, 253, 244) !important;
-            }
-            .bg-zinc-200 {
-              background-color: rgb(228, 228, 231) !important;
-            }
-            
-            /* Text colors */
-            .text-white {
-              color: rgb(255, 255, 255) !important;
-            }
-            .text-zinc-900, .text-black, .text-zinc-800, .text-zinc-850 {
-              color: rgb(9, 9, 11) !important;
-            }
-            .text-zinc-500 {
-              color: rgb(113, 113, 122) !important;
-            }
-            .text-zinc-400 {
-              color: rgb(161, 161, 170) !important;
-            }
-            .text-blue-600 {
-              color: rgb(37, 99, 235) !important;
-            }
-            .text-green-700, .text-green-600 {
-              color: rgb(22, 163, 74) !important;
-            }
-            
-            /* Border colors and styles */
-            .border, .border-t, .border-b, .border-l, .border-r {
-              border-color: rgb(212, 212, 216) !important; /* fallback border-zinc-300 */
-            }
-            .border-zinc-900, .border-black {
-              border-color: rgb(9, 9, 11) !important;
-            }
-            .border-zinc-400 {
-              border-color: rgb(161, 161, 170) !important;
-            }
-            .border-zinc-300 {
-              border-color: rgb(212, 212, 216) !important;
-            }
-            .border-zinc-200, .border-zinc-200\\/60 {
-              border-color: rgb(228, 228, 231) !important;
-            }
-            .border-dashed {
-              border-style: dashed !important;
-            }
+            .flex { display: flex !important; }
+            .flex-col { flex-direction: column !important; }
+            .flex-1 { flex: 1 1 0% !important; }
+            .justify-between { justify-content: space-between !important; }
+            .justify-center { justify-content: center !important; }
+            .items-center { align-items: center !important; }
+            .items-start { align-items: flex-start !important; }
+            .gap-1 { gap: 0.25rem !important; }
+            .gap-1\\.5 { gap: 0.375rem !important; }
+            .gap-2 { gap: 0.5rem !important; }
+            .gap-3 { gap: 0.75rem !important; }
+            .gap-4 { gap: 1rem !important; }
+            .space-y-0\\.5 > * + * { margin-top: 0.125rem !important; }
+            .space-y-1 > * + * { margin-top: 0.25rem !important; }
+            .space-y-1\\.5 > * + * { margin-top: 0.375rem !important; }
+            .space-y-2 > * + * { margin-top: 0.5rem !important; }
+            .space-y-3 > * + * { margin-top: 0.75rem !important; }
+            .space-y-4 > * + * { margin-top: 1rem !important; }
+            .space-y-6 > * + * { margin-top: 1.5rem !important; }
+            .text-center { text-align: center !important; }
+            .text-right { text-align: right !important; }
+            .text-left { text-align: left !important; }
+            .font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important; }
+            .font-sans { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important; }
+            .font-normal { font-weight: 400 !important; }
+            .font-medium { font-weight: 500 !important; }
+            .font-semibold { font-weight: 600 !important; }
+            .font-bold { font-weight: 700 !important; }
+            .font-black { font-weight: 900 !important; }
+            .uppercase { text-transform: uppercase !important; }
+            .italic { font-style: italic !important; }
+            .not-italic { font-style: normal !important; }
+            .text-\\[10px\\] { font-size: 10px !important; line-height: 14px !important; }
+            .text-\\[11px\\] { font-size: 11px !important; line-height: 15px !important; }
+            .text-xs { font-size: 12px !important; line-height: 16px !important; }
+            .text-sm { font-size: 14px !important; line-height: 20px !important; }
+            .text-base { font-size: 16px !important; line-height: 24px !important; }
+            .text-lg { font-size: 18px !important; line-height: 28px !important; }
+            .text-xl { font-size: 20px !important; line-height: 28px !important; }
+            .border { border-style: solid !important; border-width: 1px !important; border-color: rgb(228, 228, 231) !important; }
+            .border-t { border-top-style: solid !important; border-top-width: 1px !important; border-top-color: rgb(228, 228, 231) !important; }
+            .border-b { border-bottom-style: solid !important; border-bottom-width: 1px !important; border-bottom-color: rgb(228, 228, 231) !important; }
+            .border-l { border-left-style: solid !important; border-left-width: 1px !important; border-left-color: rgb(228, 228, 231) !important; }
+            .border-r { border-right-style: solid !important; border-right-width: 1px !important; border-right-color: rgb(228, 228, 231) !important; }
+            .border-2 { border-width: 2px !important; }
+            .bg-white { background-color: rgb(255, 255, 255) !important; }
+            .text-zinc-900, .text-black, .text-zinc-800 { color: rgb(9, 9, 11) !important; }
+            .text-zinc-500 { color: rgb(113, 113, 122) !important; }
+            .text-zinc-400 { color: rgb(161, 161, 170) !important; }
+            .text-blue-600 { color: rgb(37, 99, 235) !important; }
+            .rounded { border-radius: 0.25rem !important; }
+            .rounded-lg { border-radius: 0.5rem !important; }
+            .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important; }
+            .w-full { width: 100% !important; }
           `;
           clonedDoc.head.appendChild(style);
         }
@@ -596,7 +677,6 @@ export default function App() {
       }
     }
   }, []);
-  const [activeOrders, setActiveOrdersState] = useState<ActiveOrder[]>([]);
   const [shopInfo, setShopInfoState] = useState<ShopInfo>({
     name: 'Warung Berkah UMKM',
     address: 'Jl. Merdeka No. 123, Jakarta',
@@ -604,14 +684,6 @@ export default function App() {
     message: 'Terima kasih telah berbelanja!',
     bankAccounts: []
   });
-
-  const setActiveOrders = useCallback((newActiveOrdersOrUpdater: ActiveOrder[] | ((prev: ActiveOrder[]) => ActiveOrder[])) => {
-    setActiveOrdersState((prev) => {
-      const next = typeof newActiveOrdersOrUpdater === 'function' ? newActiveOrdersOrUpdater(prev) : newActiveOrdersOrUpdater;
-      syncActiveOrdersToFirestore(next);
-      return next;
-    });
-  }, []);
 
   const setShopInfo = useCallback((newShopInfoOrUpdater: ShopInfo | ((prev: ShopInfo) => ShopInfo)) => {
     setShopInfoState((prev) => {
@@ -633,8 +705,8 @@ export default function App() {
       snapshot.forEach(docSnap => {
         items.push(docSnap.data() as Product);
       });
-      // Sort alphabetically by name
-      items.sort((a, b) => a.name.localeCompare(b.name));
+      // Sort alphabetically by product name A-Z
+      items.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'id', { sensitivity: 'base' }));
       setProductsState(items);
     }, (err) => console.error("Firestore products listen error:", err));
 
@@ -658,15 +730,6 @@ export default function App() {
       setPreordersState(items);
     }, (err) => console.error("Firestore preorders listen error:", err));
 
-    const unsubActiveOrders = onSnapshot(collection(db, 'activeOrders'), (snapshot) => {
-      const items: ActiveOrder[] = [];
-      snapshot.forEach(docSnap => {
-        items.push(docSnap.data() as ActiveOrder);
-      });
-      // Keep active orders in consistent order
-      items.sort((a, b) => a.id.localeCompare(b.id));
-      setActiveOrdersState(items);
-    }, (err) => console.error("Firestore activeOrders listen error:", err));
 
     const unsubShopInfo = onSnapshot(doc(db, 'shopInfo', 'settings'), (docSnap) => {
       if (docSnap.exists()) {
@@ -684,12 +747,21 @@ export default function App() {
       }
     }, (err) => console.error("Firestore shopInfo listen error:", err));
 
+    const unsubCustomers = onSnapshot(collection(db, 'customers'), (snapshot) => {
+      const items: Customer[] = [];
+      snapshot.forEach(docSnap => {
+        items.push(docSnap.data() as Customer);
+      });
+      items.sort((a, b) => a.name.localeCompare(b.name));
+      setCustomersState(items);
+    }, (err) => console.error("Firestore customers listen error:", err));
+
     return () => {
       unsubProducts();
       unsubSales();
       unsubPreorders();
-      unsubActiveOrders();
       unsubShopInfo();
+      unsubCustomers();
     };
   }, []);
 
@@ -744,7 +816,6 @@ export default function App() {
     setProducts(INITIAL_PRODUCTS);
     setSales([]);
     setPreorders([]);
-    setActiveOrders([]);
     setShopInfo(defaultShopInfo);
     setTempShopInfo(defaultShopInfo);
     setCart([]);
@@ -796,9 +867,9 @@ export default function App() {
   const navItems = [
     { id: 'dashboard', label: 'Ringkasan', icon: LayoutDashboard },
     { id: 'pos', label: 'Kasir / Order', icon: Store },
-    { id: 'kitchen', label: 'Dine In / Take Away', icon: Coffee },
     { id: 'inventory', label: 'Inventaris', icon: Package },
     { id: 'preorders', label: 'Online', icon: ClipboardList },
+    { id: 'customers', label: 'Pelanggan', icon: Users },
     { id: 'history', label: 'Riwayat Jual', icon: History },
     { id: 'settings', label: 'Pengaturan', icon: Settings },
   ];
@@ -807,11 +878,7 @@ export default function App() {
   if (view === 'receipt' && receiptData) {
     return (
       <div className="min-h-screen bg-zinc-100 flex flex-col items-center py-10 px-4 text-zinc-900 font-mono">
-        <div 
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-white p-8 w-full max-w-sm shadow-sm relative overflow-hidden"
-        >
+        <div className="bg-white p-8 w-full max-w-sm shadow-sm relative overflow-hidden">
           {/* Decorative cut effect top */}
           <div className="absolute top-0 left-0 right-0 h-2 flex gap-1 px-1">
             {Array.from({length: 15}).map((_, i) => (
@@ -1009,7 +1076,7 @@ export default function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto relative pb-20 md:pb-0">
+      <main className="flex-1 overflow-auto relative pb-[40px] md:pb-0">
          <header className="hidden md:flex h-16 bg-white border-b border-zinc-200 items-center justify-between px-4 md:px-8 sticky top-0 z-10 gap-2 md:gap-4">
           <div className="flex items-center gap-3">
             <div className="md:hidden w-8 h-8 bg-blue-600 rounded-lg flex flex-shrink-0 items-center justify-center text-white font-bold text-xs">
@@ -1028,12 +1095,7 @@ export default function App() {
               <div className="flex items-center gap-2 md:gap-3">
                 <div>
                   {saveSuccess && (
-                    <div 
-                      initial={{ opacity: 0, x: 10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0 }}
-                      className="hidden sm:flex text-[10px] md:text-xs font-bold text-green-600 items-center gap-1.5 bg-green-50 px-2 md:px-3 py-1 md:py-1.5 rounded-full border border-green-100"
-                    >
+                    <div className="hidden sm:flex text-[10px] md:text-xs font-bold text-green-600 items-center gap-1.5 bg-green-50 px-2 md:px-3 py-1 md:py-1.5 rounded-full border border-green-100">
                       <CheckCircle2 className="w-3 md:w-3.5 h-3 md:h-3.5" /> Tersimpan!
                     </div>
                   )}
@@ -1052,16 +1114,9 @@ export default function App() {
           </div>
         </header>
 
-        <div className="p-4 md:p-8">
+        <div className="px-2.5 pt-2.5 pb-[5px] md:p-8">
           <div>
-            <div
-              key={view}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-            >
-              {view === 'pos' && (
+            <div key={view}>               {view === 'pos' && (
                 <POSView 
                   products={products} 
                   setProducts={setProducts}
@@ -1071,16 +1126,11 @@ export default function App() {
                   setSales={setSales}
                   preorders={preorders}
                   setPreorders={setPreorders}
-                  setActiveOrders={setActiveOrders}
                   shopInfo={shopInfo}
                   isDownloading={isDownloading}
                   downloadAsPNG={downloadAsPNG}
-                />
-              )}
-              {view === 'kitchen' && (
-                <KitchenMonitorView 
-                  activeOrders={activeOrders} 
-                  setActiveOrders={setActiveOrders}
+                  customers={customers}
+                  onNavigateOnline={() => setView('preorders')}
                 />
               )}
               {view === 'inventory' && (
@@ -1098,8 +1148,17 @@ export default function App() {
                    downloadAsPNG={downloadAsPNG}
                    downloadAsPDF={downloadAsPDF}
                    isDownloading={isDownloading}
+                   customers={customers}
                  />
                )}
+              {view === 'customers' && (
+                <CustomersView 
+                  customers={customers} 
+                  setCustomers={setCustomers} 
+                  sales={sales}
+                  preorders={preorders}
+                />
+              )}
               {view === 'dashboard' && (
                 <DashboardView sales={sales} products={products} />
               )}
@@ -1126,23 +1185,40 @@ export default function App() {
       </main>
 
       {/* Bottom Navigation - Mobile Only */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-zinc-200 flex justify-around items-center h-16 z-50 px-2">
-        {navItems.filter(item => item.id !== 'settings').map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setView(item.id as View)}
-            className={cn(
-              "flex flex-col items-center justify-center gap-1 min-w-[3.5rem] px-1",
-              view === item.id ? "text-blue-600" : "text-zinc-400"
-            )}
-          >
-            <item.icon className="w-5 h-5" />
-            <span className="text-[10px] font-bold uppercase tracking-tighter truncate w-full text-center">
-              {item.label.split(' ')[0]}
-            </span>
-          </button>
-        ))}
-      </nav>
+      {(() => {
+        const mobileNavItems = navItems.filter(
+          (item) => !['settings', 'customers', 'history'].includes(item.id)
+        );
+        const activeIndex = mobileNavItems.findIndex((item) => item.id === view);
+
+        return (
+          <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-zinc-200 h-10 z-50 px-2 py-1 flex items-center">
+            <div className="relative flex w-full h-full bg-zinc-100 rounded-lg p-0.5 items-center">
+              {activeIndex >= 0 && (
+                <div
+                  className="absolute top-0.5 bottom-0.5 left-0.5 rounded-md bg-blue-600 shadow-xs transition-transform duration-200 ease-out"
+                  style={{
+                    width: `calc((100% - 4px) / ${mobileNavItems.length})`,
+                    transform: `translateX(${activeIndex * 100}%)`,
+                  }}
+                />
+              )}
+              {mobileNavItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setView(item.id as View)}
+                  className={cn(
+                    "relative z-10 flex-1 h-full flex items-center justify-center text-[11px] font-bold tracking-tight transition-colors duration-200 cursor-pointer truncate px-1",
+                    view === item.id ? "text-white" : "text-zinc-500 hover:text-zinc-800"
+                  )}
+                >
+                  {item.label.split(' ')[0]}
+                </button>
+              ))}
+            </div>
+          </nav>
+        );
+      })()}
     </div>
   );
 }

@@ -44,12 +44,26 @@
         "id": { "type": "string" },
         "date": { "type": "string" },
         "customerName": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "customerAddress": { "type": "string" },
         "deliveryMode": { "type": "string" },
         "shippingCost": { "type": "number" },
         "milestone": { "type": "string" },
         "total": { "type": "number" }
       },
       "required": ["id", "date", "customerName", "deliveryMode", "shippingCost", "milestone", "total"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Registered shop customers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" }
+      },
+      "required": ["id", "name"]
     },
     "ActiveOrder": {
       "title": "ActiveOrder",
@@ -104,6 +118,10 @@
     "shopInfo/{infoId}": {
       "schema": "ShopInfo",
       "description": "General shop configurations"
+    },
+    "customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Registered customer profiles"
     }
   }
 }

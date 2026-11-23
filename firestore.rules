@@ -17,5 +17,8 @@ service cloud.firestore {
     match /shopInfo/{infoId} {
       allow read, write: if true;
     }
+    match /customers/{customerId} {
+      allow read, write: if true;
+    }
   }
 }

@@ -31,20 +31,7 @@ export interface Sale {
   amountPaid: number;
   change: number;
   customerName?: string;
-  serviceType?: 'Dine In' | 'Take Away' | 'Online';
-  tableNumber?: string;
-  orderNumber?: string;
-}
-
-export type OrderStatus = 'pending' | 'preparing' | 'ready' | 'completed';
-
-export interface ActiveOrderItem extends CartItem {
-  isReady?: boolean;
-}
-
-export interface ActiveOrder extends Omit<Sale, 'items'> {
-  items: ActiveOrderItem[];
-  status: OrderStatus;
+  serviceType?: 'Online' | string;
 }
 
 export interface BankAccount {
@@ -76,6 +63,8 @@ export interface Preorder {
   id: string; // Order No (CO)
   date: string;
   customerName: string;
+  customerPhone?: string;
+  customerAddress?: string;
   items: PreorderItem[];
   deliveryMode: string;
   shippingCost: number;
@@ -83,4 +72,11 @@ export interface Preorder {
   total: number;
 }
 
-export type View = 'dashboard' | 'pos' | 'inventory' | 'history' | 'preorders' | 'settings' | 'qris' | 'receipt' | 'kitchen';
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  address: string;
+}
+
+export type View = 'dashboard' | 'pos' | 'inventory' | 'history' | 'preorders' | 'settings' | 'qris' | 'receipt' | 'customers';

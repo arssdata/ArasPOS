@@ -110,19 +110,19 @@ export function DashboardView({ sales, products }: any) {
   const coldProducts = [...productPerformance].reverse().slice(0, 4);
 
   return (
-    <div className="space-y-6 md:space-y-8 pb-10">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/50 backdrop-blur-md p-4 rounded-lg border border-zinc-100 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-blue-600 rounded-xl text-white">
-            <BarChart3 className="w-5 h-5" />
+    <div className="space-y-2.5 md:space-y-6 pb-1 md:pb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 md:gap-4 bg-white p-2.5 md:p-4 rounded-xl border border-zinc-200/80 shadow-xs">
+        <div className="flex items-center gap-2 md:gap-3">
+          <div className="p-1.5 md:p-2 bg-blue-600 rounded-lg md:rounded-xl text-white shrink-0">
+            <BarChart3 className="w-4 h-4 md:w-5 md:h-5" />
           </div>
           <div>
-            <h2 className="font-black text-zinc-900 uppercase tracking-tight">Ringkasan Bisnis</h2>
-            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Panel Kontrol Penjualan</p>
+            <h2 className="text-sm md:text-base font-black text-zinc-900 uppercase tracking-tight leading-tight">Ringkasan Bisnis</h2>
+            <p className="hidden md:block text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Panel Kontrol Penjualan</p>
           </div>
         </div>
 
-        <div className="flex bg-zinc-100 p-1 rounded-xl">
+        <div className="flex bg-zinc-100 p-0.5 md:p-1 rounded-lg md:rounded-xl">
           {[
             { id: 'today', label: 'Hari Ini' },
             { id: 'week', label: 'Minggu' },
@@ -136,8 +136,8 @@ export function DashboardView({ sales, products }: any) {
                 setSelectedDate(new Date());
               }}
               className={cn(
-                "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all whitespace-nowrap",
-                timeWindow === w.id ? "bg-white text-blue-600 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+                "flex-1 sm:flex-initial px-2.5 md:px-4 py-1 md:py-1.5 rounded-md md:rounded-lg text-[10px] font-black uppercase transition-all whitespace-nowrap cursor-pointer",
+                timeWindow === w.id ? "bg-white text-blue-600 shadow-xs" : "text-zinc-500 hover:text-zinc-700"
               )}
             >
               {w.label}
@@ -147,51 +147,51 @@ export function DashboardView({ sales, products }: any) {
       </div>
 
       {timeWindow !== 'total' && (
-        <div className="flex items-center justify-center gap-4 bg-white/50 p-2 rounded-xl border border-zinc-100 mb-2">
-          <button onClick={() => navigateDate(-1)} className="p-2 hover:bg-zinc-100 rounded-lg transition-colors"><ChevronLeft className="w-4 h-4" /></button>
-          <span className="text-xs font-black uppercase tracking-widest text-zinc-600">{getFormattedRange()}</span>
-          <button onClick={() => navigateDate(1)} className="p-2 hover:bg-zinc-100 rounded-lg transition-colors"><ChevronRight className="w-4 h-4" /></button>
+        <div className="flex items-center justify-center gap-3 bg-white px-2 py-1 md:p-2 rounded-lg md:rounded-xl border border-zinc-200/70">
+          <button onClick={() => navigateDate(-1)} className="p-1 md:p-1.5 hover:bg-zinc-100 rounded-md transition-colors cursor-pointer"><ChevronLeft className="w-3.5 h-3.5 md:w-4 md:h-4" /></button>
+          <span className="text-[11px] md:text-xs font-black uppercase tracking-wider text-zinc-700">{getFormattedRange()}</span>
+          <button onClick={() => navigateDate(1)} className="p-1 md:p-1.5 hover:bg-zinc-100 rounded-md transition-colors cursor-pointer"><ChevronRight className="w-3.5 h-3.5 md:w-4 md:h-4" /></button>
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-        <div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="card flex flex-col gap-1 border-l-4 border-l-blue-600 bg-white/50 backdrop-blur-sm p-3 md:p-4">
-          <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-relaxed">Omzet</span>
-          <span className="text-sm md:text-2xl font-black text-zinc-900 truncate">{formatCurrency(totalRevenue)}</span>
-          <div className="text-[8px] md:text-[10px] text-zinc-400 font-bold mt-1 uppercase flex items-center gap-1"><Calendar className="w-3 h-3" /> {timeWindow}</div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-5">
+        <div className="card flex flex-col gap-0.5 md:gap-1 border-l-4 border-l-blue-600 bg-white p-2.5 md:p-4">
+          <span className="text-[9px] md:text-[10px] font-black text-zinc-400 uppercase tracking-wider">Omzet</span>
+          <span className="text-xs md:text-2xl font-black font-mono tabular-nums text-zinc-900 truncate">{formatCurrency(totalRevenue)}</span>
+          <div className="hidden md:flex text-[10px] text-zinc-400 font-bold mt-1 uppercase items-center gap-1"><Calendar className="w-3 h-3" /> {timeWindow}</div>
         </div>
-        <div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="card flex flex-col gap-1 border-l-4 border-l-green-600 bg-white/50 backdrop-blur-sm p-3 md:p-4">
-          <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-relaxed">Profit</span>
-          <span className="text-sm md:text-2xl font-black text-zinc-900 truncate">{formatCurrency(totalProfit)}</span>
-          <div className="text-[8px] md:text-[10px] text-green-600 font-bold mt-1 uppercase flex items-center gap-1"><TrendingUp className="w-3 h-3" /> Estimasi Net</div>
+        <div className="card flex flex-col gap-0.5 md:gap-1 border-l-4 border-l-green-600 bg-white p-2.5 md:p-4">
+          <span className="text-[9px] md:text-[10px] font-black text-zinc-400 uppercase tracking-wider">Profit</span>
+          <span className="text-xs md:text-2xl font-black font-mono tabular-nums text-zinc-900 truncate">{formatCurrency(totalProfit)}</span>
+          <div className="hidden md:flex text-[10px] text-green-600 font-bold mt-1 uppercase items-center gap-1"><TrendingUp className="w-3 h-3" /> Estimasi Net</div>
         </div>
-        <div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="card flex flex-col gap-1 border-l-4 border-l-orange-600 bg-white/50 backdrop-blur-sm p-3 md:p-4">
-          <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-relaxed">Order Qty</span>
-          <span className="text-sm md:text-2xl font-black text-zinc-900">{filteredSales.length}</span>
-          <div className="text-[8px] md:text-[10px] text-zinc-400 font-bold mt-1 uppercase">Transaksi Berhasil</div>
+        <div className="card flex flex-col gap-0.5 md:gap-1 border-l-4 border-l-orange-600 bg-white p-2.5 md:p-4">
+          <span className="text-[9px] md:text-[10px] font-black text-zinc-400 uppercase tracking-wider">Order Qty</span>
+          <span className="text-xs md:text-2xl font-black font-mono tabular-nums text-zinc-900">{filteredSales.length}</span>
+          <div className="hidden md:block text-[10px] text-zinc-400 font-bold mt-1 uppercase">Transaksi Berhasil</div>
         </div>
-        <div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="card flex flex-col gap-1 border-l-4 border-l-red-600 bg-white/50 backdrop-blur-sm p-3 md:p-4">
-          <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-relaxed">Stok Tipis</span>
-          <span className={cn("text-sm md:text-2xl font-black", lowStock > 0 ? "text-red-600" : "text-zinc-900")}>{lowStock}</span>
-          <div className="text-[8px] md:text-[10px] text-zinc-400 font-bold mt-1 uppercase">Item Butuh Restock</div>
+        <div className="card flex flex-col gap-0.5 md:gap-1 border-l-4 border-l-red-600 bg-white p-2.5 md:p-4">
+          <span className="text-[9px] md:text-[10px] font-black text-zinc-400 uppercase tracking-wider">Stok Tipis</span>
+          <span className={cn("text-xs md:text-2xl font-black font-mono tabular-nums", lowStock > 0 ? "text-red-600" : "text-zinc-900")}>{lowStock}</span>
+          <div className="hidden md:block text-[10px] text-zinc-400 font-bold mt-1 uppercase">Item Butuh Restock</div>
         </div>
       </div>
 
-      <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 md:gap-8">
+      <div className="flex flex-col lg:grid lg:grid-cols-12 gap-2.5 md:gap-6">
         {/* Trend Section */}
-        <div className="w-full lg:col-span-8 space-y-6">
-          <div className="card space-y-4 md:space-y-6 bg-white overflow-hidden relative group p-4 md:p-6 shadow-sm border-none">
-            <div className="flex justify-between items-center mb-2">
+        <div className="w-full lg:col-span-8">
+          <div className="card space-y-2 md:space-y-4 bg-white overflow-hidden relative p-2.5 md:p-6 shadow-xs">
+            <div className="flex justify-between items-center">
               <div className="z-10">
-                <h3 className="font-black text-zinc-900 uppercase tracking-tight text-sm md:text-base">{trendLabel()}</h3>
-                <p className="text-[8px] md:text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Visualisasi Performa Penjualan</p>
+                <h3 className="font-black text-zinc-900 uppercase tracking-tight text-xs md:text-base">{trendLabel()}</h3>
+                <p className="hidden md:block text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Visualisasi Performa Penjualan</p>
               </div>
-              <BarChart3 className="text-blue-50 w-20 h-20 absolute -right-4 -top-4 opacity-50" />
+              <BarChart3 className="hidden md:block text-blue-50 w-20 h-20 absolute -right-4 -top-4 opacity-50" />
             </div>
             
-            <div className="h-[250px] md:h-[350px] w-full mt-4">
+            <div className="h-[140px] md:h-[320px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={getChartData()} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                <AreaChart data={getChartData()} margin={{ top: 6, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#2563eb" stopOpacity={0.1}/>
@@ -199,18 +199,18 @@ export function DashboardView({ sales, products }: any) {
                     </linearGradient>
                   </defs>
                   <Tooltip 
-                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', padding: '12px' }}
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '8px 10px', fontSize: '11px' }}
                     formatter={(value: number) => [formatCurrency(value), 'Penjualan']}
-                    labelStyle={{ fontWeight: '900', color: '#18181b', marginBottom: '4px', textTransform: 'uppercase', fontSize: '10px' }}
+                    labelStyle={{ fontWeight: '900', color: '#18181b', marginBottom: '2px', textTransform: 'uppercase', fontSize: '10px' }}
                   />
                   <Area 
                     type="monotone" 
                     dataKey="total" 
                     stroke="#2563eb" 
-                    strokeWidth={4}
+                    strokeWidth={3}
                     fillOpacity={1} 
                     fill="url(#colorTotal)" 
-                    animationDuration={1500}
+                    animationDuration={1000}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -219,66 +219,59 @@ export function DashboardView({ sales, products }: any) {
         </div>
 
         {/* Side Performance Cards */}
-        <div className="col-span-4 space-y-6">
-          <div className="card space-y-4 shadow-lg border-zinc-50">
-            <div className="flex items-center gap-2 border-b border-zinc-50 pb-3">
-              <TrendingUp className="text-green-500 w-4 h-4" />
-              <div className="flex flex-col">
-                <h3 className="font-bold text-sm uppercase tracking-tight">Produk Terlaris</h3>
-                <span className="text-[8px] font-black text-zinc-400 uppercase tracking-widest">{timeWindow === 'total' ? 'Semua Waktu' : `Periode ${timeWindow}`}</span>
+        <div className="w-full lg:col-span-4 space-y-2.5 md:space-y-4">
+          <div className="card p-2.5 md:p-4 space-y-2 md:space-y-3 shadow-xs">
+            <div className="flex items-center justify-between border-b border-zinc-100 pb-1.5 md:pb-2.5">
+              <div className="flex items-center gap-1.5">
+                <TrendingUp className="text-green-500 w-3.5 h-3.5 md:w-4 md:h-4" />
+                <h3 className="font-bold text-xs md:text-sm uppercase tracking-tight">Produk Terlaris</h3>
               </div>
+              <span className="text-[9px] font-black text-zinc-400 uppercase">{timeWindow === 'total' ? 'Semua' : timeWindow}</span>
             </div>
-            <div className="space-y-4">
+            <div className="space-y-1.5 md:space-y-2.5">
               {hotProducts.length > 0 ? hotProducts.map((p: any) => (
-                <div key={p.id} className="flex items-center justify-between group">
-                  <div className="flex flex-col">
-                    <span className="text-xs font-bold text-zinc-800 group-hover:text-blue-600 transition-colors">{p.name}</span>
-                    <span className="text-[10px] text-zinc-400 font-bold uppercase">{p.sold} Unit Terjual</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-green-600 bg-green-50 px-2 py-0.5 rounded text-[10px] font-black italic">
-                    TOP <BarChart3 className="w-2 h-2" />
+                <div key={p.id} className="flex items-center justify-between gap-2 text-xs">
+                  <span className="font-semibold text-zinc-800 truncate">{p.name}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[10px] font-mono tabular-nums font-bold text-zinc-500">{p.sold}x</span>
+                    <span className="text-green-600 bg-green-50 px-1.5 py-0.5 rounded text-[9px] font-black">TOP</span>
                   </div>
                 </div>
               )) : (
-                <div className="py-6 text-center text-[10px] font-black text-zinc-300 uppercase tracking-[0.2em]">Data Kosong</div>
+                <div className="py-3 text-center text-[10px] font-black text-zinc-300 uppercase tracking-[0.2em]">Data Kosong</div>
               )}
             </div>
           </div>
 
-          <div className="card space-y-4 border-dashed border-zinc-200 bg-zinc-50/30 shadow-none border-2">
-            <div className="flex items-center gap-2 border-b border-zinc-100 pb-3 font-semibold">
-              <TrendingDown className="text-red-400 w-4 h-4" />
-              <div className="flex flex-col">
-                <h3 className="font-bold text-sm uppercase tracking-tight text-zinc-500">Butuh Evaluasi</h3>
-                <span className="text-[8px] font-black text-zinc-300 uppercase tracking-widest">Penjualan Terendah</span>
+          <div className="card p-2.5 md:p-4 space-y-2 md:space-y-3 border-dashed border-zinc-200 bg-zinc-50/40 shadow-none border">
+            <div className="flex items-center justify-between border-b border-zinc-100 pb-1.5 md:pb-2.5">
+              <div className="flex items-center gap-1.5">
+                <TrendingDown className="text-red-400 w-3.5 h-3.5 md:w-4 md:h-4" />
+                <h3 className="font-bold text-xs md:text-sm uppercase tracking-tight text-zinc-600">Butuh Evaluasi</h3>
               </div>
+              <span className="text-[9px] font-bold text-zinc-400 uppercase">Terendah</span>
             </div>
-            <div className="space-y-4 opacity-70">
+            <div className="space-y-1.5 md:space-y-2 opacity-80">
               {coldProducts.map((p: any) => (
-                <div key={p.id} className="flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="text-xs font-semibold text-zinc-600">{p.name}</span>
-                    <span className="text-[10px] text-zinc-400 font-bold uppercase">{p.sold} Terjual</span>
-                  </div>
+                <div key={p.id} className="flex items-center justify-between gap-2 text-xs">
+                  <span className="font-semibold text-zinc-600 truncate">{p.name}</span>
+                  <span className="text-[10px] font-mono tabular-nums text-zinc-400 font-bold shrink-0">{p.sold} terjual</span>
                 </div>
               ))}
             </div>
           </div>
 
           {lowStock > 0 && (
-            <div className="card space-y-4 border-red-100 bg-red-50/30">
-              <div className="flex items-center gap-2 border-b border-red-100 pb-3">
-                <PackagePlus className="text-red-600 w-4 h-4" />
-                <h3 className="font-bold text-sm uppercase tracking-tight text-red-700">Restock Segera</h3>
+            <div className="card p-2.5 md:p-4 space-y-2 md:space-y-3 border-red-100 bg-red-50/30">
+              <div className="flex items-center gap-1.5 border-b border-red-100 pb-1.5 md:pb-2.5">
+                <PackagePlus className="text-red-600 w-3.5 h-3.5 md:w-4 md:h-4" />
+                <h3 className="font-bold text-xs md:text-sm uppercase tracking-tight text-red-700">Restock Segera</h3>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-1.5 md:space-y-2">
                 {lowStockProducts.map((p: any) => (
-                  <div key={p.id} className="flex items-center justify-between">
-                    <div className="flex flex-col">
-                      <span className="text-xs font-bold text-zinc-800">{p.name}</span>
-                      <span className="text-[10px] font-mono text-zinc-500 uppercase">{p.sku}</span>
-                    </div>
-                    <div className="bg-red-100 text-red-600 px-2 py-0.5 rounded text-[10px] font-black italic">
+                  <div key={p.id} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="font-bold text-zinc-800 truncate">{p.name}</span>
+                    <div className="bg-red-100 text-red-600 px-1.5 py-0.5 rounded text-[10px] font-black font-mono tabular-nums shrink-0">
                       STOK: {p.stock - (p.reserved || 0)}
                     </div>
                   </div>

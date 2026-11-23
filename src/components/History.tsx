@@ -69,7 +69,7 @@ export function HistoryView({ sales, shopInfo, downloadAsPNG, isDownloading }: a
         'Tanggal order': s.orderDate ? format(new Date(s.orderDate), 'dd/MM/yyyy HH:mm') : '-',
         'Tanggal Selesai': format(new Date(s.date), 'dd/MM/yyyy HH:mm'),
         'Nama Customer': s.customerName || '-',
-        'Tipe Order': s.serviceType || (s.id.startsWith('DIN') ? 'Dine In' : s.id.startsWith('TKA') ? 'Take Away' : 'Online'),
+        'Tipe Order': s.serviceType || 'Online',
         'Total Pembayaran': s.total,
         'Total Modal': totalModal,
         'summary SKU terjual & qty': summarySKU
@@ -164,14 +164,8 @@ export function HistoryView({ sales, shopInfo, downloadAsPNG, isDownloading }: a
                   {s.customerName || '-'}
                 </td>
                 <td className="px-6 py-4">
-                  <span className={cn(
-                    "px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase tracking-tighter",
-                    s.serviceType === 'Dine In' || s.id.startsWith('DIN') ? "bg-blue-50 text-blue-600" :
-                    s.serviceType === 'Take Away' || s.id.startsWith('TKA') ? "bg-orange-50 text-orange-600" :
-                    s.serviceType === 'Online' || s.id.startsWith('ONL') ? "bg-purple-50 text-purple-600" :
-                    "bg-zinc-50 text-zinc-600"
-                  )}>
-                    {s.serviceType || (s.id.startsWith('DIN') ? 'Dine In' : s.id.startsWith('TKA') ? 'Take Away' : 'Online')}
+                  <span className="px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase tracking-tighter bg-purple-50 text-purple-600">
+                    {s.serviceType || 'Online'}
                   </span>
                 </td>
                 <td className="px-6 py-4">
@@ -195,40 +189,50 @@ export function HistoryView({ sales, shopInfo, downloadAsPNG, isDownloading }: a
 
     {selectedSale && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div 
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-zinc-100 rounded-lg p-6 w-full max-w-sm shadow-sm relative"
-          >
+          <div className="bg-zinc-100 rounded-lg p-6 w-full max-w-sm shadow-sm relative">
             <button onClick={() => setSelectedSale(null)} className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600 no-print cursor-pointer"><X /></button>
-            <div id="receipt" className="bg-white p-6 rounded shadow-sm border font-mono text-sm space-y-4">
-              <div className="text-center border-b pb-4 space-y-1">
-                <h3 className="font-bold text-lg uppercase tracking-tight">{shopInfo.name}</h3>
-                <p className="text-xs text-zinc-500 leading-relaxed">{shopInfo.address}</p>
-                <p className="text-xs text-zinc-500">{shopInfo.phone}</p>
+            <div 
+              id="receipt" 
+              className="bg-white p-6 rounded shadow-sm border font-mono text-sm space-y-4"
+              style={{
+                backgroundColor: '#ffffff',
+                color: '#18181b',
+                padding: '24px',
+                borderRadius: '8px',
+                border: '1px solid #e4e4e7',
+                fontFamily: 'monospace, SFMono-Regular, Courier, monospace',
+                width: '384px',
+                maxWidth: '100%',
+                boxSizing: 'border-box',
+                margin: '0 auto'
+              }}
+            >
+              <div className="text-center border-b pb-4 space-y-1" style={{ textAlign: 'center', borderBottom: '1px solid #e4e4e7', paddingBottom: '16px' }}>
+                <h3 className="font-bold text-lg uppercase tracking-tight" style={{ fontWeight: 700, fontSize: '18px', textTransform: 'uppercase', margin: 0 }}>{shopInfo.name}</h3>
+                <p className="text-xs text-zinc-500 leading-relaxed" style={{ fontSize: '12px', color: '#71717a', margin: '4px 0 0 0', lineHeight: 1.5 }}>{shopInfo.address}</p>
+                <p className="text-xs text-zinc-500" style={{ fontSize: '12px', color: '#71717a', margin: '2px 0 0 0' }}>{shopInfo.phone}</p>
               </div>
 
-              <div className="text-xs space-y-1 py-1 border-b italic">
-                <div className="flex justify-between">
+              <div className="text-xs space-y-1 py-1 border-b italic" style={{ fontSize: '12px', fontStyle: 'italic', borderBottom: '1px solid #e4e4e7', padding: '8px 0' }}>
+                <div className="flex justify-between" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>Nota: #{selectedSale.id}</span>
                   <span>{format(new Date(selectedSale.date), 'dd/MM/yy HH:mm')}</span>
                 </div>
-                <div className="flex justify-between font-bold not-italic">
+                <div className="flex justify-between font-bold not-italic" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 700, fontStyle: 'normal', marginTop: '4px' }}>
                   <span>Kasir: {selectedSale.customerName || 'Staff'}</span>
-                  <div className="text-right">
-                    <div>{selectedSale.serviceType || 'Common'}</div>
-                    <div className="text-[10px] uppercase">{selectedSale.serviceType === 'Dine In' ? `Meja: ${selectedSale.tableNumber}` : selectedSale.serviceType === 'Take Away' ? `Antrean: ${selectedSale.orderNumber}` : ''}</div>
+                  <div className="text-right" style={{ textAlign: 'right' }}>
+                    <div>{selectedSale.serviceType || 'Online'}</div>
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-3 py-2">
+              <div className="space-y-3 py-2" style={{ padding: '8px 0' }}>
                 {selectedSale.items.map((item: CartItem) => (
-                  <div key={item.id} className="space-y-0.5">
-                    <div className="flex justify-between">
-                      <span className="font-bold uppercase text-xs">{item.name}</span>
+                  <div key={item.id} className="space-y-0.5" style={{ marginBottom: '6px' }}>
+                    <div className="flex justify-between" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span className="font-bold uppercase text-xs" style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '12px' }}>{item.name}</span>
                     </div>
-                    <div className="flex justify-between text-xs text-zinc-500">
+                    <div className="flex justify-between text-xs text-zinc-500" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: '#71717a' }}>
                       <span>{item.quantity} x {formatCurrency(item.price)}</span>
                       <span>{formatCurrency(item.quantity * item.price)}</span>
                     </div>
@@ -236,22 +240,22 @@ export function HistoryView({ sales, shopInfo, downloadAsPNG, isDownloading }: a
                 ))}
               </div>
 
-              <div className="border-t pt-3 space-y-2 font-bold">
-                <div className="flex justify-between text-lg">
+              <div className="border-t pt-3 space-y-2 font-bold" style={{ borderTop: '1px solid #18181b', paddingTop: '12px', marginTop: '8px', fontWeight: 700 }}>
+                <div className="flex justify-between text-lg" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '18px', fontWeight: 900 }}>
                   <span>TOTAL</span>
                   <span>{formatCurrency(selectedSale.total)}</span>
                 </div>
-                <div className="flex justify-between text-xs text-zinc-500 font-normal">
+                <div className="flex justify-between text-xs text-zinc-500 font-normal" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: '#71717a', fontWeight: 400, marginTop: '4px' }}>
                   <span>DIBAYAR ({selectedSale.paymentMethod.toUpperCase()})</span>
                   <span>{formatCurrency(selectedSale.amountPaid)}</span>
                 </div>
-                <div className="flex justify-between text-xs text-zinc-500 font-normal">
+                <div className="flex justify-between text-xs text-zinc-500 font-normal" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: '#71717a', fontWeight: 400, marginTop: '4px' }}>
                   <span>KEMBALIAN</span>
                   <span>{formatCurrency(selectedSale.change)}</span>
                 </div>
               </div>
 
-              <div className="pt-6 border-t text-center text-zinc-400 text-xs italic">
+              <div className="pt-6 border-t text-center text-zinc-400 text-xs italic" style={{ borderTop: '1px solid #e4e4e7', paddingTop: '24px', textAlign: 'center', color: '#a1a1aa', fontSize: '12px', fontStyle: 'italic', marginTop: '16px' }}>
                 <p>{shopInfo.message}</p>
               </div>
             </div>

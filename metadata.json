@@ -2,5 +2,7 @@
   "name": "WiraPOS - Sistem Kasir & Inventaris UMKM",
   "description": "Aplikasi Point of Sale (POS) dan manajemen inventaris yang mudah digunakan untuk UMKM Indonesia. Dilengkapi fitur cetak struk, manajemen stok, dan laporan penjualan.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

@@ -128,22 +128,12 @@ export function SettingsView({
     <div className="max-w-2xl mx-auto space-y-6 md:space-y-8 pb-24 md:pb-20 p-2 sm:p-0 relative">
       <div>
         {successMsg && (
-          <div 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] bg-green-600 text-white px-6 py-3 rounded-full shadow-sm font-bold flex items-center gap-2 whitespace-nowrap text-sm"
-          >
+          <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] bg-green-600 text-white px-6 py-3 rounded-full shadow-sm font-bold flex items-center gap-2 whitespace-nowrap text-sm">
             <CheckCircle2 className="w-4 h-4" /> {successMsg}
           </div>
         )}
         {errorMsg && (
-          <div 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] bg-red-600 text-white px-6 py-3 rounded-full shadow-sm font-bold flex items-center gap-2 whitespace-nowrap text-sm"
-          >
+          <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] bg-red-600 text-white px-6 py-3 rounded-full shadow-sm font-bold flex items-center gap-2 whitespace-nowrap text-sm">
             <X className="w-4 h-4" /> {errorMsg}
           </div>
         )}
@@ -353,7 +343,9 @@ export function SettingsView({
             className="w-full p-2.5 bg-white border border-zinc-200 rounded-lg focus:ring-2 focus:ring-blue-600 focus:outline-none text-sm"
           >
             <option value="">-- Pilih Produk --</option>
-            {products.map(p => (
+            {[...products]
+              .sort((a: Product, b: Product) => (a.name || '').localeCompare(b.name || '', 'id', { sensitivity: 'base' }))
+              .map(p => (
               <option key={p.id} value={p.id}>
                 {p.name} ({p.sku})
               </option>
